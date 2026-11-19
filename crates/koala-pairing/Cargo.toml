@@ -1,0 +1,17 @@
+[package]
+name = "koala-pairing"
+description = "Apple's pair-setup and pair-verify (SRP-6a, Ed25519, X25519), without a transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+chacha20poly1305.workspace = true
+ed25519-dalek.workspace = true
+getrandom.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
+srp.workspace = true
+thiserror.workspace = true
+x25519-dalek.workspace = true
