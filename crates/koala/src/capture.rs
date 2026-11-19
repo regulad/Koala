@@ -12,9 +12,10 @@ use std::net::SocketAddrV6;
 use std::time::Duration;
 
 use apple_opack::Value;
+use koala_capture::avc::{AnswerSettings, Offer, answer, ntp_now};
 use koala_capture::session::{
-    Configuration, MESSAGE_TYPE, SESSION_EVENT, STREAM_EVENT, message, session_start, start_stream, stream as name,
-    stream_activated, stream_announce,
+    ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, control, message, session_start,
+    start_stream, stream as name, stream_activated, stream_announce,
 };
 use koala_capture::streams::{
     STREAM_ID, STREAM_KEY, STREAM_START, STREAM_TYPE, TYPE_RAPPORT, TYPE_UDP, rapport_stream_answer,
@@ -38,6 +39,18 @@ pub struct Local {
 
 /// How long one capture session is followed.
 const SESSION_TIME: Duration = Duration::from_secs(120);
+/// The ProductType Koala presents in the capture session, and its OS build
+/// for AVConference's call info: a real pair, an M1 MacBook Air on macOS
+/// 27.0.1. A Mac model (anything containing "Mac") makes the session's device
+/// model 1, which skips a TV's placement step; with `_rdsr` 1, not 3, the
+/// iPhone shows the Continuity Camera shield, not Sing's (`docs/guest-pairing.md`).
+pub(crate) const MODEL: &str = "MacBookAir10,1";
+const OS_BUILD: &str = "26A434";
+/// The payload types Koala answers the AVC offer with, the first offered
+/// winning. tvOS answers 101 (codec 16, which is also what a Mac asks for in
+/// 'call' mode); 119 is the iPhone's own preference for 4-channel 'call'.
+/// `KOALA_AVC_PAYLOAD` puts another first, for trials.
+const PAYLOADS: [u8; 2] = [101, 119];
 /// How long the iPhone has to connect a Rapport stream once answered.
 const STREAM_CONNECT: Duration = Duration::from_secs(5);
 
@@ -221,30 +234,83 @@ impl Session {
 
 /// One Rapport stream: the iPhone's connection, encrypted from its first
 /// frame with the stream's pre-shared key. Logs what it carries, answers
-/// requests empty, and sends `start` (the Command stream's StartStream) when
-/// it's given.
+/// requests empty and (on Control) the AVC offer, and sends `start` (the
+/// Command stream's StartStream) when it's given.
 async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: oneshot::Receiver<Value>) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
-    // Only Command gets a StartStream; the others' senders are dropped.
+    // Only Command gets a StartStream (xid 1); the others' senders are dropped.
     if let Ok(value) = start.await
         && let Err(e) = connection.send_opack(FrameType::E_OPACK, &value).await
     {
         return println!("capture: stream {stream}: {e}");
     }
+    let mut xid = 1;
     loop {
-        match connection.receive_opack().await {
-            Ok((FrameType::E_OPACK, value)) => {
-                if let Some(message) = Message::parse(value)
-                    && message.kind == MessageType::Request
-                {
-                    let _ = connection.send_opack(FrameType::E_OPACK, &message.reply(dict(vec![]))).await;
-                }
-            }
-            Ok(_) => {}
+        let value = match connection.receive_opack().await {
+            Ok((FrameType::E_OPACK, value)) => value,
+            Ok(_) => continue,
             Err(e) => return println!("capture: stream {stream} ended: {e}"),
+        };
+        let Some(message) = Message::parse(value) else { continue };
+        let out = match message.kind {
+            MessageType::Request => message.reply(dict(vec![])),
+            MessageType::Event if stream == name::CONTROL && message.id.as_deref() == Some(STREAM_EVENT) => {
+                let Some(content) = avc_answer(&message.content) else { continue };
+                xid += 1;
+                Message::event(STREAM_EVENT, xid, content)
+            }
+            _ => continue,
+        };
+        if let Err(e) = connection.send_opack(FrameType::E_OPACK, &out).await {
+            return println!("capture: stream {stream}: {e}");
         }
     }
+}
+
+/// Koala's answer to the iPhone's AVConference offer (Control selector 2,
+/// `[entity, offer]`), as the stream event's content: selector 2 again, with
+/// `[entity, answer]`. `None` for any other Control event.
+fn avc_answer(content: &Value) -> Option<Value> {
+    if content.get(SELECTOR).and_then(Value::as_u64) != Some(control::AVC_NEGOTIATION) {
+        return None;
+    }
+    let Some(Value::Array(args)) = content.get(ARGS) else {
+        println!("capture: an AVC offer without arguments");
+        return None;
+    };
+    let (Some(entity), Some(data)) = (args.first().and_then(Value::as_u64), args.get(1).and_then(Value::as_bytes))
+    else {
+        println!("capture: an AVC offer that isn't [entity, data]");
+        return None;
+    };
+    let offer = Offer::parse(data).map_err(|e| println!("capture: the AVC offer: {e}")).ok()?;
+    let offered = offer.payloads();
+    println!(
+        "capture: AVC offer for entity {entity}: mode {:?}, payloads {offered:?}, the iPhone's SSRC {:?}",
+        offer.mode,
+        offer.ssrc()
+    );
+    let wanted = std::env::var("KOALA_AVC_PAYLOAD").ok().and_then(|p| p.parse::<u8>().ok());
+    let Some(payload) = wanted.into_iter().chain(PAYLOADS).find(|p| offered.contains(p)) else {
+        println!("capture: none of the payloads Koala answers with was offered");
+        return None;
+    };
+    let mut ssrc = [0u8; 4];
+    crate::random(&mut ssrc);
+    let settings = AnswerSettings {
+        payload,
+        ssrc: u32::from_be_bytes(ssrc),
+        ntp_time: ntp_now(),
+        device_type: MODEL,
+        os_version: OS_BUILD,
+    };
+    let bytes = answer(&offer, &settings).map_err(|e| println!("capture: the AVC answer: {e}")).ok()?;
+    println!("capture: AVC answer: payload {payload}, Koala's SSRC {:#010x}, {} bytes", settings.ssrc, bytes.len());
+    Some(dict(vec![
+        (SELECTOR, Value::int(control::AVC_NEGOTIATION)),
+        (ARGS, Value::Array(vec![Value::int(entity), Value::Bytes(bytes)])),
+    ]))
 }
 
 /// The microphone's UDP path: logs what arrives (SRTP, once the iPhone

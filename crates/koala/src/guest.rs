@@ -22,11 +22,15 @@ use crate::capture::Local;
 use crate::dnssd::Registration;
 use crate::hci::HciTrace;
 
-/// The ProductType Koala claims: an Apple TV 4K (3rd generation), whose
-/// tvOS 27 offers guest pairing.
+/// The ProductType Koala claims while pairing: an Apple TV 4K (3rd
+/// generation), whose tvOS 27 offers guest pairing. (The capture session
+/// presents a Mac: `capture::MODEL`.)
 const MODEL: &str = "AppleTV14,1";
-/// `_rdsr`: start the discovery session as mic-only.
-const MIC_ONLY: u8 = 3;
+/// `_rdsr`, the discovery session's start reason: 1, OnCommunal. Not 3,
+/// MicOnly: that sends the iPhone down Apple Music Sing's path, which needs
+/// a media route to a real TV and ends in "Unable to connect" (trial 13,
+/// `docs/guest-pairing.md`).
+const START_REASON: u8 = 1;
 /// `rpFl` while pairing: bit 11 (the iPhone ignores devices without it) and
 /// bit 19 (pairing mode).
 const PAIRING_FLAGS: &str = "0x80800";
@@ -120,7 +124,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
     let mut hold = warlock.hold("Koala guest pairing").await.map_err(|e| format!("Warlock: {e}"))?;
 
     let url = format!(
-        "continuitycamera://connect?_pubID={public_id}&_pinC={pin}&_pi={pairing_id}&model={MODEL}&_rdsr={MIC_ONLY}"
+        "continuitycamera://connect?_pubID={public_id}&_pinC={pin}&_pi={pairing_id}&model={MODEL}&_rdsr={START_REASON}"
     );
     show_qr(&url)?;
 
@@ -136,8 +140,10 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                 println!("\nconnection from {from}");
                 let setup = || Some(SetupServer::new(identity.clone(), pin.as_str()).with_m2_items(vec![(27, vec![1])]));
                 // What we answer `_systemInfo` with: the keys the iPhone's own
-                // request carries, with our values.
-                let system_info = |service: &str| dict(vec![
+                // request carries, with our values. The capture session's
+                // `model` is a Mac's: the iPhone takes the session's device
+                // model from it, and a TV gets a placement step.
+                let system_info = |service: &str, model: &str| dict(vec![
                     ("_i", rapport_id.as_str().into()),
                     ("_idsID", rapport_id.as_str().into()),
                     ("_pubID", rp_ba.as_str().into()),
@@ -146,10 +152,11 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("_bf", Value::int(0)),
                     ("_cf", Value::int(512)),
                     ("_clSrv", service.into()),
-                    ("model", MODEL.into()),
+                    ("model", model.into()),
                     ("name", "Koala".into()),
                 ]);
-                let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
+                let infos =
+                    (system_info(GUEST_PAIRING_SERVICE, MODEL), system_info(CAPTURE_SERVICE, crate::capture::MODEL));
                 // The iPhone may keep this connection open: the run's end ends it too.
                 let conversation = converse(stream, from, &identity, setup, &mut peers, local, infos);
                 if tokio::time::timeout_at(end, conversation).await.is_err() {
