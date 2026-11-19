@@ -30,6 +30,15 @@ Everything else is wasted if the iPhone won't accept a host that isn't a real Ap
 
 **Go** if the QR and every check the iPhone makes can be met with values Koala chooses. **No-go** if any step needs Apple-signed material Koala can't produce, unless the other path avoids it. The result, and the path chosen, is recorded here.
 
+**Result (2026-11-18): go, on the Continuity Camera guest path.** Details and evidence: [`docs/guest-pairing.md`](docs/guest-pairing.md).
+
+- **No Apple-signed material.** Nothing in the flow needs it on either side. The QR is `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=<ProductType>&_rdsr=3`, made of random UUIDs Koala picks.
+- **The roles are the reverse of the old guess.** In pairing, the host advertises `_rdlink._tcp` on AWDL (TXT `rpFl=0x80800`, `rpPI=<_pi>`, `rpVr=715.2`) and is the SRP pair-setup server (`passwordType` 10, PIN `_pinC`). The iPhone connects to it. That `rpFl` takes the iPhone down a path with no identity resolution and no IDS requirement, and both sides store each other as SessionPaired identities built from keys each generates itself. (So Warlock's contract example, `koala._rdlink._tcp`, was right.)
+- **Capture, roles swapped.** The iPhone is the server, the host connects and pair-verifies with those keys.
+- **The main open question** is how to get the iPhone onto AWDL for the capture connection. Apple's host asks over BLE and over a Wi-Fi companion link at once; the companion-link event `_rdNeedsAWDL` is accepted from SessionPaired peers.
+- **iPhone-side precondition:** the user's Continuity Camera setting must be on.
+- **Sing stays the fallback** and wasn't needed; it would also require Apple Music.
+
 ## Phase 1 onwards: crates and milestones
 
 - **`opack`**: depend on [`apple-opack`](https://gitlab.com/clicker-devs/apple-opack) 1.1.0 (MIT; a port of pyatv's, byte-compatible with it) rather than writing one; test against pyatv's encoder.
@@ -44,15 +53,16 @@ Everything else is wasted if the iPhone won't accept a host that isn't a real Ap
 
 Milestones (exit criteria):
 
-- **K0 go/no-go:** Phase 0's questions answered in `docs/`, the path chosen.
-- **K1 Rapport:** Koala's client pair-sets-up (PIN on the TV) and pair-verifies with the Apple TV 4K over the LAN and exchanges an E_OPACK request; pyatv's client pairs with Koala's server.
-- **K2 (moment of truth):** the iPhone scans Koala's QR and completes guest pair-setup with Koala over Warlock.
-- **K3:** a mic-only Continuity Capture session negotiated.
+- **K0 go/no-go:** Phase 0's questions answered in `docs/`, the path chosen. *Done 2026-11-18: go, Continuity Camera guest path.*
+- **K1 Rapport:** Koala's client pair-sets-up (PIN on the TV) and pair-verifies with the Apple TV 4K over the LAN and exchanges an E_OPACK request; pyatv's client pairs with Koala's server, including a fixed-PIN (`passwordType` 10) SessionPaired pair-setup with the identity info block.
+- **K2 (moment of truth):** the iPhone scans Koala's QR, finds Koala's `_rdlink._tcp` over Warlock, and completes guest pair-setup; its Continuity Camera screen opens in mic-only mode.
+- **K3:** the iPhone brought onto AWDL (`_rdNeedsAWDL`), Koala connected to its RDLink server and pair-verified, and a mic-only `com.apple.continuitycapture` session negotiated. Needs more RE first: the control messages, the NSKeyedArchiver configuration, the stream descriptors and the AVConference/SRTP keying.
 - **K4:** the iPhone's microphone plays through "CABLE Output" with stable latency and drift. The repository is published around here.
 
 ## Risks
 
-- The iPhone rejects a host that isn't a genuine Apple TV, or needs something only Apple can sign. Phase 0 exists for this.
+- The iPhone rejects a host that isn't a genuine Apple TV, or needs something only Apple can sign. Phase 0 found no such check in the code (2026-11-18), but only the iPhone itself can confirm it (K2).
+- The iPhone won't come onto AWDL for the capture connection without Apple's BLE or Wi-Fi request, and neither has been tried (K3).
 - The AVConference negotiation blob is opaque, and SRTP keying is untraced. Mitigation: RE of macOS's and iOS's AVConference.
 - No ground truth from a real guest session: every protocol detail comes from static RE, so the iPhone is the only test of the host side.
 - Young, low-adoption crates (`apple-opack`, `hap-tlv8`): review them like our own code, and test them against pyatv.
