@@ -428,6 +428,32 @@ So Koala reverses the order:
   - If not, the sideband needs Rapport over BLE (a connectable advert and a
     BLE transport Windows can serve) or a companion link over shared Wi-Fi.
 
+## Phase B: the session start, and the iPhone asks for its streams (2026-11-19, run 11)
+
+Koala sent `ContinuityCaptureSessionEventID` with `MessageType` 0 (from
+`koala-capture`) once the iPhone answered `_systemInfo`. The event carried
+session number 1, the archived mic-only configuration (entity 3, a new
+sessionID, `audioDeviceMode` 'call') and the four streams.
+
+- **The iPhone accepted it.** It sent `MessageType` 1 (session started),
+  then a `_streamStart` request for each stream:
+  - Control, Command and Data: `{_streamID, _streamType: 2, _streamKey: its
+    32-byte X25519 public key, _tf: 0, _streamSrv:
+    "com.apple.continuitycapture"}`.
+  - The microphone: `{_streamID: "ContinuityCaptureMediaMicrophone",
+    _streamType: 3, _streamFlags: 2, _streamAddr: a ULA (fd12:…::1),
+    _streamPort, _streamMACAddr: its AWDL MAC, _tf: 0}`.
+- **Koala answered each with an empty dictionary.**
+  - The iPhone logged `[sessionID:1] create stream (…)` errors.
+  - It posted `kCMContinuityCaptureEventStartStream` for the microphone,
+    then cached it: `Wait for sideband identifiers`.
+  - The screen ended at "Unable to connect" again.
+- **"Sideband identifiers" are these streams.** tvOS's
+  `_CMContinuityCaptureGetListOfSupportedSidebandIdentifiers` returns
+  Control, Command and Data. The iPhone waits for those three Rapport
+  streams to come up, not for a companion-link sideband: the BLE attempts
+  of run 10 came before the session had started.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.
