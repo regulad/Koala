@@ -5,8 +5,7 @@
 //! a Rapport server for its pair-setup (password type 10, the QR's PIN).
 
 use std::net::{SocketAddr, SocketAddrV6};
-use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use apple_opack::Value;
 use koala_pairing::{Identity, Peer, SetupServer};
@@ -16,10 +15,9 @@ use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
 use qrcode::render::unicode;
 use qrcode::{EcLevel, QrCode};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::Semaphore;
-use tokio::task::JoinSet;
 use warlock_client::{Client, PIPE};
 
+use crate::ble::Advert;
 use crate::dnssd::Registration;
 
 /// The ProductType Koala claims: an Apple TV 4K (3rd generation), whose
@@ -37,14 +35,8 @@ const GUEST_PAIRING_SERVICE: &str = "com.apple.ddui.guestpairing";
 /// The Rapport service of a Continuity Capture session (`_clSrv`), whose
 /// RemoteDisplay session start launches the iPhone's capture daemon.
 const CAPTURE_SERVICE: &str = "com.apple.continuitycapture";
-/// How long the answer to the iPhone's `_systemInfo` waits for the scan.
-const SCAN_WAIT: Duration = Duration::from_secs(8);
-/// Ports probed at once, and how long each may take. The iPhone drops a
-/// connection to a closed port without answering (2026-11-19: the whole
-/// range took 16.6 s at 1024 × 1 s), so each probe of a closed port waits
-/// out its time.
-const SCAN_PARALLEL: usize = 2048;
-const SCAN_TIMEOUT: Duration = Duration::from_millis(600);
+/// How long Phase B waits for the iPhone's RDLink listener to show up.
+const PHASE_B_WAIT: Duration = Duration::from_secs(90);
 
 /// Runs for `seconds`, then withdraws the advert and returns.
 pub async fn run(seconds: u64) -> Result<(), String> {
@@ -60,9 +52,10 @@ pub async fn run(seconds: u64) -> Result<(), String> {
     // Who Koala is to the iPhone: a UUID identifier (the QR's `_pubID`), a
     // key pair, and CoreUtils' info block with an IRK, model and name.
     let public_id = crate::uuid();
-    let mut irk = vec![0; 16];
+    let mut irk = [0u8; 16];
     crate::random(&mut irk);
-    let info_block = dict(vec![("altIRK", Value::Bytes(irk)), ("model", MODEL.into()), ("name", "Koala".into())]);
+    let info_block =
+        dict(vec![("altIRK", Value::Bytes(irk.to_vec())), ("model", MODEL.into()), ("name", "Koala".into())]);
     let info_block = apple_opack::pack(&info_block).map_err(|e| e.to_string())?;
     let identity = Identity::generate(public_id.as_bytes()).with_info(info_block);
     let pairing_id = crate::uuid();
@@ -127,7 +120,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("name", "Koala".into()),
                 ]);
                 let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
-                converse(stream, from, &identity, setup, &mut peers, &warlock, infos).await;
+                converse(stream, from, &identity, setup, &mut peers, irk, infos).await;
             }
             line = advertising.next_value() => match line {
                 Some(Ok(state)) => {
@@ -154,37 +147,22 @@ pub async fn run(seconds: u64) -> Result<(), String> {
 }
 
 /// One connection: pairing, then whatever the peer sends, until it closes.
-///
-/// While the iPhone is pairing, its AWDL is up: Koala scans it for the
-/// listener its capture session needs (`docs/guest-pairing.md`, "Phase B"),
-/// which it advertises on AWDL only when asked over BLE or Wi-Fi. The
-/// answer to its `_systemInfo` waits for the scan (the iPhone allows about
-/// 10 s), and then Koala tries to start a capture session on each open port.
+/// Once the iPhone's `_systemInfo` is answered it is in its mic-only
+/// session, and [`phase_b`] starts alongside.
 async fn converse(
     stream: TcpStream,
     from: SocketAddr,
     identity: &Identity,
     setup: impl Fn() -> Option<SetupServer>,
     peers: &mut Vec<Peer>,
-    warlock: &Client,
+    irk: [u8; 16],
     (guest_info, capture_info): (Value, Value),
 ) {
-    let mut scan = match from {
-        SocketAddr::V6(iphone) => Some(tokio::spawn(scan(iphone))),
-        SocketAddr::V4(_) => None,
-    };
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
     let known = peers.len();
     let result = serve_pairing(&mut connection, identity, setup, peers).await;
     let iphone = peers[known..].first().cloned();
-    if let (SocketAddr::V6(address), Some(_)) = (from, &iphone) {
-        // What Warlock hears the iPhone advertise.
-        let mac = mac_from_link_local(address.ip());
-        match warlock.peer(&mac).await {
-            Ok(peer) => println!("Warlock's view of {mac}: {peer:?}"),
-            Err(e) => println!("Warlock has no peer {mac}: {e}"),
-        }
-    }
+    let mut phase_b_started = false;
     for peer in &peers[known..] {
         println!("PAIRED with {}", String::from_utf8_lossy(&peer.id));
         if let Some(info) = &peer.info {
@@ -212,35 +190,18 @@ async fn converse(
             Ok((FrameType::E_OPACK, value)) => match Message::parse(value) {
                 Some(message) if message.kind == MessageType::Request => {
                     let is_system_info = message.id.as_deref() == Some("_systemInfo");
-                    // The scan: waited for a while, then followed up whenever it ends.
-                    let mut follow_up = None;
-                    if is_system_info && let Some(mut task) = scan.take() {
-                        let early = tokio::time::timeout(SCAN_WAIT, &mut task).await;
-                        if early.is_err() {
-                            println!("answering before the scan ends ({} s)", SCAN_WAIT.as_secs());
-                        }
-                        if let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone()) {
-                            let (identity, info) = (identity.clone(), capture_info.clone());
-                            follow_up = Some(async move {
-                                let ports = match early {
-                                    Ok(done) => done.unwrap_or_default(),
-                                    Err(_) => task.await.unwrap_or_default(),
-                                };
-                                println!("open TCP ports on the iPhone: {ports:?}");
-                                if !ports.is_empty() {
-                                    start_capture(address, ports, identity, iphone, info).await;
-                                }
-                            });
-                        }
-                    }
                     let content = if is_system_info { guest_info.clone() } else { dict(vec![]) };
                     let reply = message.reply(content);
                     if let Err(e) = connection.send_opack(FrameType::E_OPACK, &reply).await {
                         println!("answering failed: {e}");
                         return;
                     }
-                    if let Some(follow_up) = follow_up {
-                        tokio::spawn(follow_up);
+                    if is_system_info
+                        && !phase_b_started
+                        && let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone())
+                    {
+                        phase_b_started = true;
+                        tokio::spawn(phase_b(address, identity.clone(), iphone, irk, capture_info.clone()));
                     }
                 }
                 _ => {}
@@ -258,29 +219,63 @@ async fn converse(
     }
 }
 
-/// The iPhone's open TCP ports in its ephemeral range, where rapportd's
-/// listeners are.
-async fn scan(iphone: SocketAddrV6) -> Vec<u16> {
-    let started = std::time::Instant::now();
-    let slots = Arc::new(Semaphore::new(SCAN_PARALLEL));
-    let mut probes = JoinSet::new();
-    for port in 49152..=u16::MAX {
-        let slot = slots.clone().acquire_owned().await.expect("the semaphore stays open");
-        let mut address = iphone;
-        address.set_port(port);
-        probes.spawn(async move {
-            let _slot = slot;
-            let open = matches!(tokio::time::timeout(SCAN_TIMEOUT, TcpStream::connect(address)).await, Ok(Ok(_)));
-            if open {
-                println!("open: TCP port {port}, {:.1} s into the scan", started.elapsed().as_secs_f32());
+/// Phase B (`docs/guest-pairing.md`): ask the iPhone onto AWDL with the BLE
+/// advert a tvOS host sends, watch for its `_rdlink._tcp` listener in its
+/// AWDL frames (Warlock's view of it), then start the capture session there.
+async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, irk: [u8; 16], info: Value) {
+    let advert = match crate::ble::adapter_address() {
+        Ok(address) => {
+            let data = crate::nearby::needs_awdl(&irk, &address);
+            let shown = address.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
+            let hex: String = data.iter().map(|b| format!("{b:02x}")).collect();
+            match Advert::start(&data) {
+                Ok(advert) => {
+                    println!("BLE: broadcasting 4c00{hex}, tagged for address {shown} ({:?})", advert.status());
+                    Some(advert)
+                }
+                Err(e) => {
+                    println!("BLE: the advert failed: {e}");
+                    None
+                }
             }
-            open.then_some(port)
-        });
+        }
+        Err(e) => {
+            println!("BLE: no Bluetooth adapter: {e}");
+            None
+        }
+    };
+    let warlock = Client::new(PIPE);
+    let mac = mac_from_link_local(iphone.ip());
+    let started = Instant::now();
+    let mut last = String::new();
+    while started.elapsed() < PHASE_B_WAIT {
+        match warlock.peer(&mac).await {
+            Ok(seen) => {
+                let records = format!("{:?}", seen.services.records);
+                if records != last {
+                    println!("the iPhone's AWDL records, {:.1} s in: {records}", started.elapsed().as_secs_f32());
+                    last = records;
+                }
+                let rdlink =
+                    seen.services.records.iter().find(|r| r.rtype == "SRV" && r.name.contains("._rdlink._tcp"));
+                if let Some(port) = rdlink.and_then(|r| r.port) {
+                    println!("the iPhone's RDLink listener: port {port}");
+                    start_capture(iphone, vec![port], identity, peer, info).await;
+                    drop(advert);
+                    return;
+                }
+            }
+            Err(e) => {
+                let gone = format!("gone: {e}");
+                if gone != last {
+                    println!("Warlock doesn't hear the iPhone now ({e})");
+                    last = gone;
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(500)).await;
     }
-    let mut open: Vec<u16> = probes.join_all().await.into_iter().flatten().collect();
-    open.sort_unstable();
-    println!("scanned the iPhone in {:.1} s", started.elapsed().as_secs_f32());
-    open
+    println!("no RDLink listener from the iPhone in {} s", PHASE_B_WAIT.as_secs());
 }
 
 /// Tries each port as the iPhone's RDLink server: pair-verify as the paired

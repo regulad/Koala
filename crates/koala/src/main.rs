@@ -12,8 +12,10 @@
 //! every frame. It needs Warlock running, and Administrator rights or
 //! membership of `warlock-users`.
 
+mod ble;
 mod dnssd;
 mod guest;
+mod nearby;
 
 #[tokio::main]
 async fn main() {
