@@ -530,9 +530,58 @@ session can avoid that path is the next question: a host that presents as
 another model, or a flag in the configuration. If not, the iPhone has to
 reach Koala over CompanionLink. The AVC answer is needed either way.
 
+## Phase B: off the Sing path, the iPhone sends audio (2026-11-19, trials 16–17)
+
+**Static analysis of iOS 27.2.1 (`continuitycaptured`):**
+- The Sing path is micOnly alone. micOnly is rapportd's discovery start
+  reason 3, which comes from the QR's `_rdsr=3`; the model plays no part.
+  `-[CCDShieldUISession bundleIdentifier]` picks ContinuitySingShieldUI on
+  it.
+- The Sing app's `setupSingSessionFromURL:remoteDisplayIdentifier:` needs a
+  sideband CompanionLink device with a media route, which only a real
+  AirPlay output has.
+- The device model is the `model` in the capture connection's
+  `_systemInfo` (`_CMContinuityCaptureDeviceModelFromModelString`): any
+  string containing "Mac" gives 1, "AppleTV" 2, "iPad" 3, "iPhone" 4.
+
+**What changed in Koala:**
+- The QR says `_rdsr=1` (OnCommunal).
+- The capture `_systemInfo` presents `MacBookAir10,1`. Pairing still presents
+  the Apple TV.
+- Koala answers the AVC offer as tvOS's `initWithOffer:` does
+  (`koala-capture`'s `avc`): payload 101, its own SSRC, the offer's
+  bandwidth settings mirrored.
+- The microphone's `_streamAddr` is a bare link-local address.
+
+**What the iPhone did (trial 17, with its syslog and a capture on the Warlock
+adapter):**
+- **No Sing.** It showed the Continuity Camera shield, reported connected,
+  and brought up all four streams. The `llw0` path was accepted.
+- **It took the answer.** Its stream configuration reads
+  `TxPayloadType = 101`, `CodecType = 19`, 4 channels, `ptime` 10 ms,
+  900 kbps, SRTP and SRTCP cipher suite 7. The send key equals the receive
+  key and is 46 bytes: 32 + 14, as from `_streamKey` ‖ sessionID.
+- **It sent audio:** `VCAudioTransmitter … audioTxBitrate=919kbps`, over a UDP
+  connection to Koala's microphone port on `llw0`. **None of it reached
+  Windows.** Warlock carries only AWDL-encapsulated data (Apple's LLC/SNAP
+  under the AWDL BSSID), and `llw0` is a separate `802.11` interface on the
+  iPhone. That its frames are encapsulated otherwise is an inference until a
+  raw capture shows them.
+- **It sent a clock.** On Command, selector 4 every 60 ms: `[sample time,
+  +2880 a message (48 kHz); host time in ns; clock ID]`.
+- **It sent PTP.** As gPTP grandmaster (domain 0, priority1 250), over
+  unicast UDP 319/320 to Koala's link-local address: Announce, Sync,
+  Follow_Up, and Signaling with Apple org-extension TLVs (`00:0d:93`). That
+  is about 15 packets a second, and Koala answered none.
+- **It gave up at +12 s:** `VCMediaStream checkRTCPPacketTimeout… Last RTCP
+  packet receive time: nan … rtcpTimeoutInterval=12.0`, then `stream RTCP
+  timed out` (`-1007`) and `kCMContinuityCaptureEventConnectionDisconnect`.
+  The host must send RTCP back over that path.
+
 ## What Koala needs, from this
 
-- **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.
+- **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
+  Not `_rdsr=3`: that is the Sing path (trials 12–13, 16–17).
 - **Advert:** through Warlock, `_rdlink._tcp` with TXT `rpFl=0x80800`,
   `rpPI=<_pi>` and `rpVr=715.2`, plus plausible `rpBA`/`rpAD`. One TCP listener
   on the Warlock adapter.
@@ -550,23 +599,29 @@ reach Koala over CompanionLink. The AVC answer is needed either way.
 
 ## Open
 
-1. **The Sing path** (trials 12–13): whether a mic-only session can avoid
-   it, or else how the iPhone can reach Koala over CompanionLink.
-2. **The AVC answer** (trial 13): the host's reply to the offer on Control
-   selector 2, its protobuf, and whatever must follow before media flows
-   (`networkClockID` suggests a gPTP clock).
-3. **Whether the iPhone's `llw0` traffic reaches Warlock**, once the
-   microphone path is accepted.
-4. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
-5. **Which iOS process runs the scanner action.** The iOS file system wasn't
+1. **`llw0` through Warlock** (trial 17): what the iPhone's `llw0` frames
+   look like on the air, and carrying them both ways. That includes the
+   iPhone's `llw0` address, a ULA (`fdfb:8166:c09a::5`) rather than an EUI-64
+   link-local address.
+2. **RTCP from the host** within 12 s (SRTCP, cipher suite 7), and how the
+   46-byte key splits into master key and salt.
+3. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
+   Signaling TLVs), or only follow it. Prior art: shairport-sync's NQPTP.
+4. **The audio itself:** SRTP decryption, codec type 19 (4 channels,
+   48 kHz, 10 ms), and the clock messages on Command.
+5. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
+6. **Which iOS process runs the scanner action.** The iOS file system wasn't
    extracted, so entitlements weren't read. This doesn't affect Koala.
-6. **A possible oracle:** rapportd's `rdPairingServer` preference lets the
+7. **A possible oracle:** rapportd's `rdPairingServer` preference lets the
    pairing server run on a device that isn't a TV, a Mac included. Untried; the
    lab Mac is kept read-only.
 
-Runs 8–13 settled what was open here before: getting the iPhone onto AWDL
-for Phase B (BLE, runs 8–10), `_camCap` (the session gets as far as
-streaming without it), and the capture protocol up to the streams.
+Runs 8–17 settled what was open here before:
+- getting the iPhone onto AWDL for Phase B (BLE, runs 8–10);
+- `_camCap`: the session gets as far as streaming without it;
+- the capture protocol up to the streams;
+- the Sing path (avoided with `_rdsr=1`, trials 16–17);
+- the AVC answer (accepted, trial 17).
 
 ## Reproducing
 

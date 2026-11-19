@@ -76,9 +76,12 @@ pub async fn run(seconds: u64) -> Result<(), String> {
 
     // Who Koala is to the iPhone: a UUID identifier (the QR's `_pubID`), a
     // key pair, and CoreUtils' info block with that IRK, a model and a name.
+    // The name is the PC's (Windows' computer name, as Warlock reports it):
+    // the iPhone shows it as the device it's connected to.
+    let name = info.host_name.clone();
     let public_id = crate::uuid();
     let info_block =
-        dict(vec![("altIRK", Value::Bytes(irk.to_vec())), ("model", MODEL.into()), ("name", "Koala".into())]);
+        dict(vec![("altIRK", Value::Bytes(irk.to_vec())), ("model", MODEL.into()), ("name", name.as_str().into())]);
     let info_block = apple_opack::pack(&info_block).map_err(|e| e.to_string())?;
     let identity = Identity::generate(public_id.as_bytes()).with_info(info_block);
     let pairing_id = crate::uuid();
@@ -153,7 +156,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("_cf", Value::int(512)),
                     ("_clSrv", service.into()),
                     ("model", model.into()),
-                    ("name", "Koala".into()),
+                    ("name", name.as_str().into()),
                 ]);
                 let infos =
                     (system_info(GUEST_PAIRING_SERVICE, MODEL), system_info(CAPTURE_SERVICE, crate::capture::MODEL));
