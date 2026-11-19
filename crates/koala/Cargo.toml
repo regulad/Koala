@@ -9,6 +9,7 @@ authors.workspace = true
 [dependencies]
 apple-opack.workspace = true
 getrandom.workspace = true
+koala-capture.workspace = true
 koala-pairing.workspace = true
 koala-rapport.workspace = true
 qrcode.workspace = true

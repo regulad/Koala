@@ -8,6 +8,7 @@ use std::net::{SocketAddr, SocketAddrV6};
 use std::time::{Duration, Instant};
 
 use apple_opack::Value;
+use koala_capture::session::{Configuration, SESSION_EVENT, session_start};
 use koala_pairing::{Identity, Peer, SetupServer};
 use koala_rapport::auth::{AUTH_TYPE_SESSION_PAIRED, pair_verify, serve_pairing};
 use koala_rapport::message::dict;
@@ -314,20 +315,37 @@ async fn start_capture(iphone: SocketAddrV6, ports: Vec<u16>, identity: Identity
             println!("port {port}: sending _systemInfo failed: {e}");
             continue;
         }
-        // Everything it sends, for a while; requests get an empty answer.
+        // Everything it sends, for a while. The answer to `_systemInfo` is
+        // the session's go: the host then starts it (MessageType 0) with the
+        // archived configuration and the streams. Stream requests aren't
+        // served yet; other requests get an empty answer.
+        let mut session_id = [0u8; 16];
+        crate::random(&mut session_id);
+        session_id[6] = (session_id[6] & 0x0f) | 0x40;
+        session_id[8] = (session_id[8] & 0x3f) | 0x80;
+        let configuration = Configuration::microphone(session_id, 1);
         let listening = async {
             loop {
                 match connection.receive_opack().await {
-                    Ok((FrameType::E_OPACK, value)) => {
-                        if let Some(message) = Message::parse(value)
-                            && message.kind == MessageType::Request
-                        {
+                    Ok((FrameType::E_OPACK, value)) => match Message::parse(value) {
+                        Some(message) if message.kind == MessageType::Response && message.xid == Some(1) => {
+                            let start = Message::event(SESSION_EVENT, 2, session_start(1, &configuration));
+                            if connection.send_opack(FrameType::E_OPACK, &start).await.is_err() {
+                                return;
+                            }
+                            println!("port {port}: session start sent");
+                        }
+                        Some(message) if message.kind == MessageType::Request => {
+                            if message.id.as_deref() == Some("_streamStart") {
+                                println!("port {port}: the iPhone asks for a stream; not served yet");
+                            }
                             let reply = message.reply(dict(vec![]));
                             if connection.send_opack(FrameType::E_OPACK, &reply).await.is_err() {
                                 return;
                             }
                         }
-                    }
+                        _ => {}
+                    },
                     Ok(_) => {}
                     Err(e) => {
                         println!("port {port}: {e}");

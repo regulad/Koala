@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/koala", "crates/koala-pairing", "crates/koala-rapport"]
+members = ["crates/koala", "crates/koala-capture", "crates/koala-pairing", "crates/koala-rapport"]
 
 [workspace.package]
 # Koala's one version, which every crate carries: semver, with 0.y.z read as
@@ -13,6 +13,7 @@ authors = ["Parker Wahle <regulad@regulad.xyz>"]
 # Every dependency was released at least two weeks before it was added
 # (PLAN.md, "Pinned decisions"); Cargo.lock pins transitive ones that weren't.
 [workspace.dependencies]
+koala-capture = { path = "crates/koala-capture", version = "0.0.0" }
 koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
 koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
 # Warlock's API client (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it
@@ -27,6 +28,7 @@ chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
+plist = "1.10.3"
 qrcode = { version = "0.14.1", default-features = false }
 sha2 = "0.11.1"
 srp = "0.7.0-rc.3"
