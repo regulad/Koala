@@ -178,7 +178,7 @@ impl Session {
                 let port = socket.local_addr().map_err(|e| e.to_string())?.port();
                 let mut key = [0u8; 32];
                 crate::random(&mut key);
-                let address = format!("{}%awdl0", self.local.address.ip());
+                let address = self.local.address.ip().to_string();
                 println!(
                     "capture: stream {stream}: UDP, port {port}; the iPhone's end {:?}",
                     content.get("_streamAddr")

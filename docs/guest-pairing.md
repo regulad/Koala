@@ -452,7 +452,83 @@ sessionID, `audioDeviceMode` 'call') and the four streams.
   `_CMContinuityCaptureGetListOfSupportedSidebandIdentifiers` returns
   Control, Command and Data. The iPhone waits for those three Rapport
   streams to come up, not for a companion-link sideband: the BLE attempts
-  of run 10 came before the session had started.
+  of run 10 came before the session had started. (Trials 12–13 showed that
+  companion link is wanted after all, for something else: the Sing path,
+  below.)
+
+## Phase B: the streams come up, and the Sing path ends it (2026-11-19, trials 12–13)
+
+Koala served the streams (`capture.rs`):
+- Control, Command and Data: an X25519 answer, a TCP listener, and the
+  pre-shared key's cipher.
+- The microphone: a UDP socket and `{_streamAddr, _streamMACAddr,
+  _streamKey, _streamPort}`.
+- Then `MessageType` 3 for each stream, and StartStream on Command once all
+  four were up.
+
+Trial 12 collided with a trust prompt. Trial 13 is clean, with the iPhone's
+syslog. Its timeline, from the start of the capture session (07:50:35Z):
+
+- **+0.1–0.9 s: all three Rapport streams connect and decrypt.** The iPhone
+  connects to each listener within about 250 ms of the answer. Its first
+  frames open with the pre-shared key's `ClientEncrypt-main`/
+  `ServerEncrypt-main` keys, which confirms them.
+- **+0.9 s: the microphone path is refused.** The log reads `### Client start
+  response failed: UDP NWPath, kMalformedErr (Bad peer address string
+  'fe80::…%awdl0%llw0')`.
+  - The iPhone appends its own scope, and that scope is `llw0`, its
+    low-latency WLAN interface over AWDL, where it opens the UDP listener.
+  - `_streamAddr` must be bare. Its own request's is: a ULA such as
+    `fdab:fc94:b7cc::3`, which changes every session.
+  - Fixed after trial 13. Untried.
+- **+2.0 s: the Control and Command streams carry traffic.**
+  - StartStream on Command is answered with `kCMContinuityCaptureEventUserResume`.
+  - Control carries SetValue (selector 1) events: keyed archives of
+    `CMContinuityCaptureControl` for entity 4, namely SystemPressure,
+    BatteryLevel and BatteryState, repeated.
+  - The microphone device moves Disabled → (RemoteClientReconnect) Init →
+    (StartStream) **Streaming**.
+- **+2.0 s: the iPhone offers AVConference.**
+  - `CMContinuityCaptureAVCStreamCoordinator … creating stream (entity:3
+    isHost:0 … networkClockID:…)`, then `AVCMediaStreamNegotiator
+    initWithMode: 4`, then `sending negotiation offer (mode:4 size:470)`.
+  - The offer is Control selector 2, `ContinuityCaptureArgs` = `[3,
+    bplist]`. The bplist is a plain dictionary:
+    - `avcMediaStreamNegotiatorMode` 4;
+    - `avcMediaStreamOptionCallID` (a UUID string);
+    - `avcMediaStreamOptionRemoteEndpointInfo`: protobuf `{1: 0, 2: 1, 3:
+      "iPhone18,1", 4: "2260.15.1", 5: "24B156"}`;
+    - `avcMediaStreamNegotiatorMediaBlob`: zlib over a 204-byte protobuf.
+      Its fields are 1: 1; 2: 1; 3: {six varints}; 6: "Viceroy 1.7.0/GK";
+      8: 0; fifteen repeated field-9 entries of two or three varints
+      (bitrate-like values); 13, 14 and 16. There are no audio codec
+      fields, so the codecs must come in the host's answer.
+  - Then `[sessionID:1] not ready (negotiationDataReceived:0 …)`: it waits
+    for the host's answer. Koala has none yet.
+- **The Sing path, from +0.1 s, is what fails.**
+  - DServer logs `session started … deviceModel 2`, UI configuration
+    `clientDeviceModel=2 … micOnly=1`.
+  - On that it launches `com.apple.ContinuitySingShieldUI`, not the
+    Continuity Camera shield.
+  - It also activates a CompanionLink client to the host (`CF < BLE iWiFi
+    BTPipe BLEScreenOff SharedTVUser SessionPaired >`) and sends
+    `ContinuityCaptureCompanionSessionEventID` (4 keys) to
+    `rapport:rdid:DirectPeer`.
+  - rapportd's only route to Koala is BLE L2CAP, PSM 0x81, to Koala's
+    advert. Windows doesn't serve it, and the client is invalidated at
+    +5 s.
+  - At +7.8 s: `failed to find rapport device for sing session endpoint` →
+    `presentShieldError: 1`. This is the "Unable to connect: make sure the
+    iPhone and Apple TV are on the same Wi-Fi network" screen.
+  - Dismissing it gives `disconnectSession: reason User disconnect`, and
+    with it `kCMContinuityCaptureEventUserDisconnect` on Command and the
+    streams' close.
+
+So the iPhone treats a mic-only session with an Apple TV as Apple Music
+**Sing**, which also wants a CompanionLink connection to the TV. Whether a
+session can avoid that path is the next question: a host that presents as
+another model, or a flag in the configuration. If not, the iPhone has to
+reach Koala over CompanionLink. The AVC answer is needed either way.
 
 ## What Koala needs, from this
 
@@ -474,25 +550,23 @@ sessionID, `audioDeviceMode` 'call') and the four streams.
 
 ## Open
 
-1. **Getting the iPhone onto AWDL for Phase B.** Neither way has been tried.
-   - Over Wi-Fi, the PC connects to the iPhone's companion link as its
-     SessionPaired peer and sends `_rdNeedsAWDL`. Unverified: that the iPhone's
-     companion-link server accepts a SessionPaired peer, and over which
-     network. The iPhone also advertises `_companion-link._tcp` over AWDL, so
-     the request may not need the LAN at all.
-   - The BLE alternative needs Windows to advertise Apple manufacturer data,
-     which may be restricted.
-2. **`_camCap`.** Whether the iPhone needs it before accepting the capture
-   session, or only the TV does.
-3. **The capture protocol:** the control messages after connecting, the
-   NSKeyedArchiver configuration's classes, the stream descriptors, and how the
-   AVConference/SRTP keys are set up. This is K3.
+1. **The Sing path** (trials 12–13): whether a mic-only session can avoid
+   it, or else how the iPhone can reach Koala over CompanionLink.
+2. **The AVC answer** (trial 13): the host's reply to the offer on Control
+   selector 2, its protobuf, and whatever must follow before media flows
+   (`networkClockID` suggests a gPTP clock).
+3. **Whether the iPhone's `llw0` traffic reaches Warlock**, once the
+   microphone path is accepted.
 4. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
 5. **Which iOS process runs the scanner action.** The iOS file system wasn't
    extracted, so entitlements weren't read. This doesn't affect Koala.
 6. **A possible oracle:** rapportd's `rdPairingServer` preference lets the
    pairing server run on a device that isn't a TV, a Mac included. Untried; the
    lab Mac is kept read-only.
+
+Runs 8–13 settled what was open here before: getting the iPhone onto AWDL
+for Phase B (BLE, runs 8–10), `_camCap` (the session gets as far as
+streaming without it), and the capture protocol up to the streams.
 
 ## Reproducing
 

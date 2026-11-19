@@ -41,8 +41,11 @@ pub fn rapport_stream_answer(host_public: &[u8; 32], port: u16) -> Value {
     dict(vec![(STREAM_KEY, Value::Bytes(host_public.to_vec())), (STREAM_PORT, Value::int(u64::from(port)))])
 }
 
-/// The answer to a UDP stream's start. `address` is the host's, as the
-/// iPhone should reach it (a scoped link-local address, `%awdl0`).
+/// The answer to a UDP stream's start. `address` is the host's link-local
+/// address, unscoped: the iPhone appends its own interface (`%llw0`, its
+/// low-latency WLAN interface over AWDL) and refuses an address that already
+/// has one, `kMalformedErr (Bad peer address string 'fe80::…%awdl0%llw0')`
+/// (trial 13). Its own request's address is bare too (a ULA there).
 pub fn udp_stream_answer(address: &str, mac: [u8; 6], key: &[u8; 32], port: u16) -> Value {
     dict(vec![
         (STREAM_ADDRESS, address.into()),

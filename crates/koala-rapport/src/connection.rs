@@ -7,6 +7,14 @@ use crate::RapportError;
 use crate::cipher::Cipher;
 use crate::frame::{FrameType, HEADER_LEN, header, payload_len};
 
+/// The time of day in UTC, to the millisecond (`HH:MM:SS.mmm`), for trace
+/// lines to line up with the peer's own log.
+fn clock() -> String {
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let (seconds, millis) = (now.as_secs() % 86_400, now.subsec_millis());
+    format!("{:02}:{:02}:{:02}.{millis:03}Z", seconds / 3600, seconds / 60 % 60, seconds % 60)
+}
+
 /// One end of a Rapport connection: frames in and out, encrypted once
 /// pair-verify has given it a [`Cipher`].
 pub struct Connection<S> {
@@ -31,16 +39,17 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     /// Adds a line to the trace, if there is one.
     pub fn note(&self, text: &str) {
         if let Some(label) = &self.trace {
-            eprintln!("{label} {text}");
+            eprintln!("{label} {} {text}", clock());
         }
     }
 
     fn trace(&self, arrow: &str, kind: FrameType, len: usize, value: Option<&Value>) {
         let Some(label) = &self.trace else { return };
         let encrypted = if self.cipher.is_some() { " encrypted" } else { "" };
+        let time = clock();
         match value {
-            Some(value) => eprintln!("{label} {arrow} frame {}, {len} bytes{encrypted}: {value:?}", kind.0),
-            None => eprintln!("{label} {arrow} frame {}, {len} bytes{encrypted}", kind.0),
+            Some(value) => eprintln!("{label} {time} {arrow} frame {}, {len} bytes{encrypted}: {value:?}", kind.0),
+            None => eprintln!("{label} {time} {arrow} frame {}, {len} bytes{encrypted}", kind.0),
         }
     }
 
