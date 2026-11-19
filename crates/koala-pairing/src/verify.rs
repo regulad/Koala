@@ -73,7 +73,7 @@ impl VerifyServer {
             ServerState::AwaitingM3 { shared, ours, theirs } => {
                 expect_state(&tlv, 3).map_err(|e| refuse(e, 4))?;
                 let resolve = |given: Option<&[u8]>| given.and_then(|id| known(id).map(|key| (id.to_vec(), key)));
-                let peer_id =
+                let (peer_id, _) =
                     open_signed(&tlv, &shared, b"PV-Msg03", &theirs, &ours, resolve).map_err(|e| refuse(e, 4))?;
                 let m4 = encode(&[(kind::STATE, &[4])]);
                 Ok(Step::Done { send: Some(m4), result: Verified { peer_id, shared_secret: shared } })
@@ -88,6 +88,7 @@ pub struct VerifyClient {
     identity: Identity,
     secret: StaticSecret,
     expected: Option<(Vec<u8>, [u8; 32])>,
+    form: Option<(bool, Signed)>,
     state: ClientState,
 }
 
@@ -102,7 +103,16 @@ impl VerifyClient {
     pub fn new(identity: Identity) -> Self {
         let mut bytes = [0; 32];
         crate::srp::random(&mut bytes);
-        Self { identity, secret: StaticSecret::from(bytes), expected: None, state: ClientState::Start }
+        Self { identity, secret: StaticSecret::from(bytes), expected: None, form: None, state: ClientState::Start }
+    }
+
+    /// How the server's M2 was signed, once it has been checked: whether it
+    /// named the server, and whether its signature covered an identifier.
+    /// For finding out what a peer does.
+    pub fn m2_form(&self) -> Option<String> {
+        self.form.map(|(named, form)| {
+            format!("M2 {} the server, signed {form:?}", if named { "named" } else { "didn't name" })
+        })
     }
 
     /// The peer to check M2 against when it names none. An iPhone serving a
@@ -143,13 +153,23 @@ impl VerifyClient {
                     Some(id) => known(id).map(|key| (id.to_vec(), key)),
                     None => expected.clone(),
                 };
-                let peer_id = open_signed(&tlv, &shared, b"PV-Msg02", &theirs, &ours, resolve)?;
-                let signature = self.identity.sign(&[&ours[..], self.identity.id(), &theirs].concat());
-                let sealed = seal(
-                    &encryption_key(&shared),
-                    b"PV-Msg03",
-                    &encode(&[(kind::IDENTIFIER, self.identity.id()), (kind::SIGNATURE, &signature)]),
-                );
+                let named = tlv_names_signer(&tlv, &shared, b"PV-Msg02");
+                let (peer_id, form) = open_signed(&tlv, &shared, b"PV-Msg02", &theirs, &ours, resolve)?;
+                // M3 answers in M2's form. A server that names no one finds
+                // the client by trying keys on the signature, over the bytes
+                // it signs itself; so M3 names no one either, and signs the
+                // same bytes.
+                let signature = match form {
+                    Signed::WithIdentifier => self.identity.sign(&[&ours[..], self.identity.id(), &theirs].concat()),
+                    Signed::KeysOnly => self.identity.sign(&[ours, theirs].concat()),
+                };
+                let sealed = if named {
+                    encode(&[(kind::IDENTIFIER, self.identity.id()), (kind::SIGNATURE, &signature)])
+                } else {
+                    encode(&[(kind::SIGNATURE, &signature)])
+                };
+                let sealed = seal(&encryption_key(&shared), b"PV-Msg03", &sealed);
+                self.form = Some((named, form));
                 self.state = ClientState::AwaitingM4 { verified: Verified { peer_id, shared_secret: shared } };
                 Ok(Step::Send(encode(&[(kind::STATE, &[3]), (kind::ENCRYPTED_DATA, &sealed)])))
             }
@@ -194,21 +214,37 @@ fn open_signed(
     theirs: &[u8; 32],
     ours: &[u8; 32],
     resolve: impl Fn(Option<&[u8]>) -> Option<(Vec<u8>, [u8; 32])>,
-) -> Result<Vec<u8>, PairingError> {
+) -> Result<(Vec<u8>, Signed), PairingError> {
     let sealed = tlv.get(kind::ENCRYPTED_DATA).ok_or(PairingError::Malformed("encrypted data"))?;
     let plain = open(&encryption_key(shared), label, sealed).ok_or(PairingError::Decryption)?;
     let inner = Tlv8::decode(&plain).map_err(|_| PairingError::Malformed("sealed TLV8"))?;
     let signature = inner.get(kind::SIGNATURE).ok_or(PairingError::Malformed("signature"))?;
     let given = inner.get(kind::IDENTIFIER);
     let (id, public_key) = resolve(given).ok_or(PairingError::UnknownPeer)?;
-    let mut signed = vec![[&theirs[..], &id, ours].concat()];
-    if given.is_none() {
-        signed.push([&theirs[..], ours].concat());
+    if verify(&public_key, &[&theirs[..], &id, ours].concat(), signature) {
+        return Ok((id, Signed::WithIdentifier));
     }
-    if !signed.iter().any(|message| verify(&public_key, message, signature)) {
-        return Err(PairingError::Signature);
+    if given.is_none() && verify(&public_key, &[&theirs[..], ours].concat(), signature) {
+        return Ok((id, Signed::KeysOnly));
     }
-    Ok(id)
+    Err(PairingError::Signature)
+}
+
+/// Whether a sealed pair-verify message carries the signer's identifier.
+fn tlv_names_signer(tlv: &Tlv8, shared: &[u8; 32], label: &[u8; 8]) -> bool {
+    tlv.get(kind::ENCRYPTED_DATA)
+        .and_then(|sealed| open(&encryption_key(shared), label, sealed))
+        .and_then(|plain| Tlv8::decode(&plain).ok())
+        .is_some_and(|inner| inner.get(kind::IDENTIFIER).is_some())
+}
+
+/// What a pair-verify signature covered.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Signed {
+    /// Both ephemeral keys and the signer's identifier: HAP's form.
+    WithIdentifier,
+    /// Both ephemeral keys only, from a signer that named no one.
+    KeysOnly,
 }
 
 #[cfg(test)]

@@ -114,7 +114,8 @@ pub async fn run(seconds: u64) -> Result<(), String> {
     show_qr(&url)?;
 
     let mut peers: Vec<Peer> = Vec::new();
-    let deadline = tokio::time::sleep(run_for);
+    let end = tokio::time::Instant::now() + run_for;
+    let deadline = tokio::time::sleep_until(end);
     tokio::pin!(deadline);
     let mut last_advertising = String::new();
     loop {
@@ -138,7 +139,12 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("name", "Koala".into()),
                 ]);
                 let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
-                converse(stream, from, &identity, setup, &mut peers, infos).await;
+                // The iPhone may keep this connection open: the run's end ends it too.
+                let conversation = converse(stream, from, &identity, setup, &mut peers, infos);
+                if tokio::time::timeout_at(end, conversation).await.is_err() {
+                    println!("giving up after {seconds} s, in a conversation");
+                    break;
+                }
             }
             line = advertising.next_value() => match line {
                 Some(Ok(state)) => {

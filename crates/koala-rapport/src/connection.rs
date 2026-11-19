@@ -28,6 +28,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
         self
     }
 
+    /// Adds a line to the trace, if there is one.
+    pub fn note(&self, text: &str) {
+        if let Some(label) = &self.trace {
+            eprintln!("{label} {text}");
+        }
+    }
+
     fn trace(&self, arrow: &str, kind: FrameType, len: usize, value: Option<&Value>) {
         let Some(label) = &self.trace else { return };
         let encrypted = if self.cipher.is_some() { " encrypted" } else { "" };

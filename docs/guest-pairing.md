@@ -388,6 +388,46 @@ So Koala reverses the order:
   signature. `koala-pairing`'s client now checks such an M2 against the
   peer it expects.
 
+## Phase B: the capture session opens, and wants a sideband (2026-11-19, run 10)
+
+- **Pair-verify on the iPhone's listener.** In both directions, the
+  signature covers the two ephemeral keys only, with no identifier sent.
+  - The iPhone's M2 is signed that way.
+  - Koala's M3, signed the same way, was accepted: `Resolved identity for
+    signature: SessionPaired`, then `PairVerify completed server:
+    SessionPaired`.
+  - Signing over the identifier, as HAP does, fails: `Resolve identity for
+    signature failed`.
+- **The session starts.** Koala sent `_systemInfo` with `_clSrv` =
+  `com.apple.continuitycapture`, and the iPhone answered with its own.
+  rapportd buffered the connection for the proxied server, and launchd
+  started `continuitycaptured` (`ccd start`). It logged `Session state
+  changed to 1`, then `New Connection RPRemoteDisplaySession` and `create
+  session`.
+  - It created audio and video capture sessions; the audio device is
+    entity 3.
+  - It launched the mic-only screen (`_launchShieldUIForDeviceIdentifier…
+    micOnly`) and played its "pong" sound.
+- **Then it wanted a sideband.**
+  - The log shows `Wait for sideband identifiers …, cache event`.
+  - The daemon tried to send `ContinuityCaptureCompanionSessionEventID` to
+    the host over a companion link (CLinkClient, flags `BLE iWiFi BTPipe
+    SessionPaired`, never AWDL). rapportd chose an on-demand **BLE
+    connection** to the device behind the needs-AWDL advert: `Start
+    on-demand connection (NoWiFiP2P)… LT BLE`.
+  - Windows' WinRT adverts aren't connectable, so the connection never
+    came up. The daemon retried every 5 s, and the screen ended at "Unable
+    to connect: make sure the iPhone and Apple TV are on the same Wi-Fi
+    network".
+  - Koala, for its part, had sent nothing after `_systemInfo`. A tvOS host
+    sends its session-start event (`ContinuityCaptureSessionEventID`,
+    `MessageType` 0) next.
+- **Open:**
+  - Does the host's session-start event satisfy the wait for "sideband
+    identifiers"?
+  - If not, the sideband needs Rapport over BLE (a connectable advert and a
+    BLE transport Windows can serve) or a companion link over shared Wi-Fi.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.

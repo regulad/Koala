@@ -116,7 +116,12 @@ pub async fn pair_verify<S: AsyncRead + AsyncWrite + Unpin>(
     loop {
         let reply = expect(connection, FrameType::PV_NEXT).await?;
         match verify.handle(&reply, &known)? {
-            Step::Send(next) => connection.send_opack(FrameType::PV_NEXT, &dict(vec![("_pd", next.into())])).await?,
+            Step::Send(next) => {
+                if let Some(form) = verify.m2_form() {
+                    connection.note(&form);
+                }
+                connection.send_opack(FrameType::PV_NEXT, &dict(vec![("_pd", next.into())])).await?
+            }
             Step::Done { result, .. } => {
                 connection.encrypt(Cipher::new(&result.shared_secret, Role::Client));
                 return Ok(result);
