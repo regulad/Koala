@@ -8,9 +8,8 @@ use std::net::{SocketAddr, SocketAddrV6};
 use std::time::{Duration, Instant};
 
 use apple_opack::Value;
-use koala_capture::session::{Configuration, SESSION_EVENT, session_start};
 use koala_pairing::{Identity, Peer, SetupServer};
-use koala_rapport::auth::{AUTH_TYPE_SESSION_PAIRED, pair_verify, serve_pairing};
+use koala_rapport::auth::serve_pairing;
 use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
 use qrcode::render::unicode;
@@ -19,6 +18,7 @@ use tokio::net::{TcpListener, TcpStream};
 use warlock_client::{Client, PIPE};
 
 use crate::ble::Advert;
+use crate::capture::Local;
 use crate::dnssd::Registration;
 use crate::hci::HciTrace;
 
@@ -85,6 +85,16 @@ pub async fn run(seconds: u64) -> Result<(), String> {
 
     // Where the iPhone connects: the adapter's link-local address.
     let address = SocketAddr::V6(SocketAddrV6::new(adapter.address, 0, 0, adapter.index));
+    // This end, for the capture session's streams: that address, and the
+    // AWDL MAC address Warlock's radio uses.
+    let mac = info
+        .radio
+        .address
+        .as_deref()
+        .and_then(|a| a.split(':').map(|b| u8::from_str_radix(b, 16).ok()).collect::<Option<Vec<u8>>>())
+        .and_then(|b| <[u8; 6]>::try_from(b).ok())
+        .ok_or("Warlock's radio has no AWDL address yet")?;
+    let local = Local { address: SocketAddrV6::new(adapter.address, 0, 0, adapter.index), mac };
     let listener = TcpListener::bind(address).await.map_err(|e| format!("listening on {address}: {e}"))?;
     let port = listener.local_addr().map_err(|e| e.to_string())?.port();
 
@@ -141,7 +151,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                 ]);
                 let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
                 // The iPhone may keep this connection open: the run's end ends it too.
-                let conversation = converse(stream, from, &identity, setup, &mut peers, infos);
+                let conversation = converse(stream, from, &identity, setup, &mut peers, local, infos);
                 if tokio::time::timeout_at(end, conversation).await.is_err() {
                     println!("giving up after {seconds} s, in a conversation");
                     break;
@@ -180,6 +190,7 @@ async fn converse(
     identity: &Identity,
     setup: impl Fn() -> Option<SetupServer>,
     peers: &mut Vec<Peer>,
+    local: Local,
     (guest_info, capture_info): (Value, Value),
 ) {
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
@@ -225,7 +236,7 @@ async fn converse(
                         && let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone())
                     {
                         phase_b_started = true;
-                        tokio::spawn(phase_b(address, identity.clone(), iphone, capture_info.clone()));
+                        tokio::spawn(phase_b(address, local, identity.clone(), iphone, capture_info.clone()));
                     }
                 }
                 _ => {}
@@ -247,7 +258,7 @@ async fn converse(
 /// onto AWDL already running (see [`run`]), watch for its `_rdlink._tcp`
 /// listener in its AWDL frames (Warlock's view of it), then start the
 /// capture session there.
-async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, info: Value) {
+async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: Peer, info: Value) {
     let warlock = Client::new(PIPE);
     let mac = mac_from_link_local(iphone.ip());
     let started = Instant::now();
@@ -264,7 +275,9 @@ async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, info: Val
                     seen.services.records.iter().find(|r| r.rtype == "SRV" && r.name.contains("._rdlink._tcp"));
                 if let Some(port) = rdlink.and_then(|r| r.port) {
                     println!("the iPhone's RDLink listener: port {port}");
-                    start_capture(iphone, vec![port], identity, peer, info).await;
+                    let mut listener = iphone;
+                    listener.set_port(port);
+                    crate::capture::run(listener, local, identity, peer, info).await;
                     return;
                 }
             }
@@ -279,84 +292,6 @@ async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, info: Val
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     println!("no RDLink listener from the iPhone in {} s", PHASE_B_WAIT.as_secs());
-}
-
-/// Tries each port as the iPhone's RDLink server: pair-verify as the paired
-/// Apple TV, then the request that starts a RemoteDisplay session for
-/// Continuity Capture, and everything the iPhone sends back.
-async fn start_capture(iphone: SocketAddrV6, ports: Vec<u16>, identity: Identity, peer: Peer, info: Value) {
-    for port in ports {
-        let mut address = iphone;
-        address.set_port(port);
-        let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(address)).await else {
-            println!("port {port}: no connection");
-            continue;
-        };
-        let mut connection = Connection::new(stream).with_trace(format!("[iPhone port {port}]"));
-        let known = |id: &[u8]| (id == peer.id.as_slice()).then_some(peer.public_key);
-        let expected = Some((peer.id.clone(), peer.public_key));
-        let verify = pair_verify(&mut connection, identity.clone(), known, expected, AUTH_TYPE_SESSION_PAIRED);
-        match tokio::time::timeout(Duration::from_secs(5), verify).await {
-            Ok(Ok(_)) => println!("port {port}: pair-verified"),
-            Ok(Err(e)) => {
-                println!("port {port}: pair-verify failed: {e}");
-                continue;
-            }
-            Err(_) => {
-                println!("port {port}: no answer to pair-verify");
-                continue;
-            }
-        }
-        let mut request = Message::request("_systemInfo", 1, info.clone());
-        if let Value::Dict(pairs) = &mut request {
-            pairs.push(("_btHP".into(), false.into()));
-        }
-        if let Err(e) = connection.send_opack(FrameType::E_OPACK, &request).await {
-            println!("port {port}: sending _systemInfo failed: {e}");
-            continue;
-        }
-        // Everything it sends, for a while. The answer to `_systemInfo` is
-        // the session's go: the host then starts it (MessageType 0) with the
-        // archived configuration and the streams. Stream requests aren't
-        // served yet; other requests get an empty answer.
-        let mut session_id = [0u8; 16];
-        crate::random(&mut session_id);
-        session_id[6] = (session_id[6] & 0x0f) | 0x40;
-        session_id[8] = (session_id[8] & 0x3f) | 0x80;
-        let configuration = Configuration::microphone(session_id, 1);
-        let listening = async {
-            loop {
-                match connection.receive_opack().await {
-                    Ok((FrameType::E_OPACK, value)) => match Message::parse(value) {
-                        Some(message) if message.kind == MessageType::Response && message.xid == Some(1) => {
-                            let start = Message::event(SESSION_EVENT, 2, session_start(1, &configuration));
-                            if connection.send_opack(FrameType::E_OPACK, &start).await.is_err() {
-                                return;
-                            }
-                            println!("port {port}: session start sent");
-                        }
-                        Some(message) if message.kind == MessageType::Request => {
-                            if message.id.as_deref() == Some("_streamStart") {
-                                println!("port {port}: the iPhone asks for a stream; not served yet");
-                            }
-                            let reply = message.reply(dict(vec![]));
-                            if connection.send_opack(FrameType::E_OPACK, &reply).await.is_err() {
-                                return;
-                            }
-                        }
-                        _ => {}
-                    },
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("port {port}: {e}");
-                        return;
-                    }
-                }
-            }
-        };
-        let _ = tokio::time::timeout(Duration::from_secs(60), listening).await;
-        return;
-    }
 }
 
 /// The MAC address in an EUI-64 link-local address, as Warlock names peers.

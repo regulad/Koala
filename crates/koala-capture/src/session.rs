@@ -47,6 +47,37 @@ pub mod stream {
     pub const MICROPHONE: &str = "ContinuityCaptureMediaMicrophone";
 }
 
+/// The keys of a stream message (`STREAM_EVENT`): a selector and its
+/// arguments.
+pub const SELECTOR: &str = "ContinuityCaptureSelector";
+pub const ARGS: &str = "ContinuityCaptureArgs";
+
+/// Selectors on the Command stream.
+pub mod command {
+    pub const START_STREAM: u64 = 1;
+    pub const STOP_STREAM: u64 = 2;
+    pub const POST_EVENT: u64 = 3;
+    pub const SYNCHRONIZE_AUDIO_CLOCK: u64 = 4;
+    pub const SYNCHRONIZE_AUDIO_CLOCK_COMPLETE: u64 = 5;
+}
+
+/// Selectors on the Control stream.
+pub mod control {
+    pub const SET_VALUE: u64 = 1;
+    /// The iPhone's AVConference offer (`[entity, blob]`), and the host's
+    /// answer.
+    pub const AVC_NEGOTIATION: u64 = 2;
+}
+
+/// The host's StartStream command, on the Command stream: the archived
+/// configuration, an option, and 0.
+pub fn start_stream(configuration: &Configuration, option: u64) -> Value {
+    dict(vec![
+        (SELECTOR, Value::int(command::START_STREAM)),
+        (ARGS, Value::Array(vec![Value::Bytes(configuration.archive()), Value::int(option), Value::int(0)])),
+    ])
+}
+
 /// The microphone's entity.
 pub const ENTITY_MICROPHONE: i64 = 3;
 /// `audioDeviceMode` 'call': the iPhone then offers 4-channel audio.

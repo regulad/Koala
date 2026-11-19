@@ -4,7 +4,9 @@
 //!
 //! - [`archive`]: NSKeyedArchiver archives, which carry the session's
 //!   configuration.
-//! - [`session`]: the session's events and streams.
+//! - [`session`]: the session's events.
+//! - [`streams`]: the answers that set up its streams.
 
 pub mod archive;
 pub mod session;
+pub mod streams;

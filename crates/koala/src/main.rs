@@ -13,6 +13,7 @@
 //! membership of `warlock-users`.
 
 mod ble;
+mod capture;
 mod dnssd;
 mod guest;
 mod hci;

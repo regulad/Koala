@@ -419,7 +419,9 @@ name = "koala-capture"
 version = "0.0.0"
 dependencies = [
  "apple-opack",
+ "koala-pairing",
  "plist",
+ "x25519-dalek",
 ]
 
 [[package]]
