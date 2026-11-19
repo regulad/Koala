@@ -6,7 +6,10 @@
 //!   configuration.
 //! - [`session`]: the session's events.
 //! - [`streams`]: the answers that set up its streams.
+//! - [`avc`]: the AVConference negotiation that chooses the microphone's
+//!   codec.
 
 pub mod archive;
+pub mod avc;
 pub mod session;
 pub mod streams;
