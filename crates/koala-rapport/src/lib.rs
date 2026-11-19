@@ -40,7 +40,7 @@ pub enum RapportError {
 #[cfg(test)]
 mod tests {
     use apple_opack::Value;
-    use koala_pairing::{Identity, Peer};
+    use koala_pairing::{Identity, Peer, SetupServer};
 
     use super::*;
     use crate::auth::{PASSWORD_TYPE_PIN, pair_setup, pair_verify, serve_pairing};
@@ -61,11 +61,12 @@ mod tests {
                 // The first connection pairs, then verifies.
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut c = Connection::new(stream);
-                serve_pairing(&mut c, &server_id, Some("1234"), &mut peers).await.unwrap();
+                let setup = || Some(SetupServer::new(server_id.clone(), "1234"));
+                serve_pairing(&mut c, &server_id, setup, &mut peers).await.unwrap();
                 // The second only verifies, and answers one request.
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut c = Connection::new(stream);
-                let verified = serve_pairing(&mut c, &server_id, None, &mut peers).await.unwrap();
+                let verified = serve_pairing(&mut c, &server_id, || None, &mut peers).await.unwrap();
                 assert_eq!(verified.peer_id, b"client");
                 let (kind, request) = c.receive_opack().await.unwrap();
                 assert_eq!(kind, FrameType::E_OPACK);

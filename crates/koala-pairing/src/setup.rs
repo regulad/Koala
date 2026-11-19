@@ -39,6 +39,7 @@ pub struct Paired {
 pub struct SetupServer {
     identity: Identity,
     code: Vec<u8>,
+    m2_extra: Vec<(u8, Vec<u8>)>,
     state: ServerState,
 }
 
@@ -51,7 +52,14 @@ enum ServerState {
 
 impl SetupServer {
     pub fn new(identity: Identity, code: impl Into<Vec<u8>>) -> Self {
-        Self { identity, code: code.into(), state: ServerState::AwaitingM1 }
+        Self { identity, code: code.into(), m2_extra: Vec::new(), state: ServerState::AwaitingM1 }
+    }
+
+    /// Adds `items` to M2, after the salt and `B`. (pyatv's stand-in for an
+    /// Apple TV's Rapport server sends item 27 = 1 there, as Apple TVs do.)
+    pub fn with_m2_items(mut self, items: Vec<(u8, Vec<u8>)>) -> Self {
+        self.m2_extra = items;
+        self
     }
 
     /// Handles the client's next message.
@@ -67,7 +75,10 @@ impl SetupServer {
                 }
                 let transient = tlv.uint(kind::FLAGS).unwrap_or(0) & FLAG_TRANSIENT != 0;
                 let srp = SrpServer::new(&self.code);
-                let m2 = encode(&[(kind::STATE, &[2]), (kind::SALT, srp.salt()), (kind::PUBLIC_KEY, srp.public_key())]);
+                let mut items: Vec<(u8, &[u8])> =
+                    vec![(kind::STATE, &[2]), (kind::SALT, srp.salt()), (kind::PUBLIC_KEY, srp.public_key())];
+                items.extend(self.m2_extra.iter().map(|(k, v)| (*k, v.as_slice())));
+                let m2 = encode(&items);
                 self.state = ServerState::AwaitingM3 { srp, transient };
                 Ok(Step::Send(m2))
             }

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/koala-pairing", "crates/koala-rapport"]
+members = ["crates/koala", "crates/koala-pairing", "crates/koala-rapport"]
 
 [workspace.package]
 # Koala's one version, which every crate carries: semver, with 0.y.z read as
@@ -14,14 +14,23 @@ authors = ["Parker Wahle <regulad@regulad.xyz>"]
 # (PLAN.md, "Pinned decisions"); Cargo.lock pins transitive ones that weren't.
 [workspace.dependencies]
 koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
+koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
+# Warlock's API client (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it
+# under the AGPL), from a Warlock checkout beside this one. Not from git yet:
+# Cargo fetches a git dependency's submodules recursively, and devourer pins
+# a reference submodule (reference/rtl8852cu) to a commit that no longer
+# exists (PLAN.md).
+warlock-client = { path = "../Warlock/crates/warlock-client", version = "0.1.0" }
 
 apple-opack = "1.1.0"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
+qrcode = { version = "0.14.1", default-features = false }
 sha2 = "0.11.1"
 srp = "0.7.0-rc.3"
 thiserror = "2.0.21"
 tokio = "1.54.1"
+windows-sys = "0.61.2"
 x25519-dalek = { version = "3.0.0", features = ["static_secrets"] }

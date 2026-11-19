@@ -91,12 +91,12 @@ pub async fn pair_verify<S: AsyncRead + AsyncWrite + Unpin>(
 }
 
 /// Answers a client's pairing as the server until a pair-verify succeeds,
-/// then switches on encryption. Pair-setup is allowed when there is a setup
-/// `code`; peers it pairs are added to `peers`.
+/// then switches on encryption. Each pair-setup gets a server from `setup`,
+/// and is refused when it gives none; peers it pairs are added to `peers`.
 pub async fn serve_pairing<S: AsyncRead + AsyncWrite + Unpin>(
     connection: &mut Connection<S>,
     identity: &Identity,
-    code: Option<&str>,
+    setup: impl Fn() -> Option<SetupServer>,
     peers: &mut impl PeerStore,
 ) -> Result<Verified, RapportError> {
     enum Running {
@@ -109,10 +109,7 @@ pub async fn serve_pairing<S: AsyncRead + AsyncWrite + Unpin>(
         let (kind, body) = connection.receive_opack().await?;
         let message = pairing_data(&body)?;
         running = match (kind, running) {
-            (FrameType::PS_START, _) => {
-                let code = code.ok_or(RapportError::Protocol("pair-setup isn't open"))?;
-                Running::Setup(SetupServer::new(identity.clone(), code))
-            }
+            (FrameType::PS_START, _) => Running::Setup(setup().ok_or(RapportError::Protocol("pair-setup isn't open"))?),
             (FrameType::PV_START, _) => Running::Verify(VerifyServer::new(identity.clone())),
             (FrameType::PS_NEXT, setup @ Running::Setup(_)) | (FrameType::PV_NEXT, setup @ Running::Verify(_)) => setup,
             _ => return Err(RapportError::Protocol("a pairing frame out of order")),

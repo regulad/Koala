@@ -9,7 +9,7 @@
 //! `VERIFIED`, `REQUEST <name>`, `EVENT <name>`, `CLOSED`, `ERROR <reason>`.
 
 use apple_opack::Value;
-use koala_pairing::{Identity, Peer};
+use koala_pairing::{Identity, Peer, SetupServer};
 use koala_rapport::auth::serve_pairing;
 use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
@@ -43,7 +43,8 @@ async fn serve(
     peers: &mut Vec<Peer>,
     known: usize,
 ) -> Result<(), RapportError> {
-    let verified = match serve_pairing(connection, identity, Some(code), peers).await {
+    let setup = || Some(SetupServer::new(identity.clone(), code));
+    let verified = match serve_pairing(connection, identity, setup, peers).await {
         Ok(verified) => verified,
         // pyatv closes after pair-setup, before verifying.
         Err(RapportError::Closed) if peers.len() > known => {

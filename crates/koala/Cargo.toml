@@ -1,0 +1,17 @@
+[package]
+name = "koala"
+description = "An iPhone as a Windows microphone"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+apple-opack.workspace = true
+getrandom.workspace = true
+koala-pairing.workspace = true
+koala-rapport.workspace = true
+qrcode = { workspace = true, features = ["svg"] }
+tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
+warlock-client.workspace = true
+windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_NetworkManagement_Dns"] }

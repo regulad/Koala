@@ -12,11 +12,29 @@ use crate::frame::{FrameType, HEADER_LEN, header, payload_len};
 pub struct Connection<S> {
     stream: S,
     cipher: Option<Cipher>,
+    trace: Option<String>,
 }
 
 impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     pub fn new(stream: S) -> Self {
-        Self { stream, cipher: None }
+        Self { stream, cipher: None, trace: None }
+    }
+
+    /// Prints every frame to standard error, after `label`: its type, size
+    /// and (for OPACK frames) its decoded contents. For finding out what a
+    /// peer sends, as in Koala's first trials with an iPhone.
+    pub fn with_trace(mut self, label: impl Into<String>) -> Self {
+        self.trace = Some(label.into());
+        self
+    }
+
+    fn trace(&self, arrow: &str, kind: FrameType, len: usize, value: Option<&Value>) {
+        let Some(label) = &self.trace else { return };
+        let encrypted = if self.cipher.is_some() { " encrypted" } else { "" };
+        match value {
+            Some(value) => eprintln!("{label} {arrow} frame {}, {len} bytes{encrypted}: {value:?}", kind.0),
+            None => eprintln!("{label} {arrow} frame {}, {len} bytes{encrypted}", kind.0),
+        }
     }
 
     /// Encrypts every frame from now on.
@@ -55,7 +73,9 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
     }
 
     pub async fn send_opack(&mut self, kind: FrameType, value: &Value) -> Result<(), RapportError> {
-        self.send(kind, &apple_opack::pack(value)?).await
+        let payload = apple_opack::pack(value)?;
+        self.trace("->", kind, payload.len(), Some(value));
+        self.send(kind, &payload).await
     }
 
     /// The next frame, its payload decoded as OPACK (an empty payload is an
@@ -65,7 +85,14 @@ impl<S: AsyncRead + AsyncWrite + Unpin> Connection<S> {
         if payload.is_empty() {
             return Ok((kind, Value::Dict(Vec::new())));
         }
-        let (value, _rest) = apple_opack::unpack(&payload)?;
+        let (value, _rest) = match apple_opack::unpack(&payload) {
+            Ok(decoded) => decoded,
+            Err(e) => {
+                self.trace("<-", kind, payload.len(), None);
+                return Err(e.into());
+            }
+        };
+        self.trace("<-", kind, payload.len(), Some(&value));
         Ok((kind, value))
     }
 
