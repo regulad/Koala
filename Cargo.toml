@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/koala-pairing"]
+members = ["crates/koala-pairing", "crates/koala-rapport"]
 
 [workspace.package]
 # Koala's one version, which every crate carries: semver, with 0.y.z read as
@@ -13,6 +13,9 @@ authors = ["Parker Wahle <regulad@regulad.xyz>"]
 # Every dependency was released at least two weeks before it was added
 # (PLAN.md, "Pinned decisions"); Cargo.lock pins transitive ones that weren't.
 [workspace.dependencies]
+koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
+
+apple-opack = "1.1.0"
 chacha20poly1305 = "0.11.0"
 ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
@@ -20,4 +23,5 @@ hkdf = "0.13.0"
 sha2 = "0.11.1"
 srp = "0.7.0-rc.3"
 thiserror = "2.0.21"
+tokio = "1.54.1"
 x25519-dalek = { version = "3.0.0", features = ["static_secrets"] }
