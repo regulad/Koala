@@ -335,6 +335,38 @@ from code; nothing here has been tried yet.
   - TCP from Windows to an Apple listener over Warlock hasn't been checked on
     its own yet.
 
+## Phase B over BLE: the advert, and Windows' address (2026-11-19)
+
+- **The advert, from code.** After Apple's company ID, `0F 05 A0 32 T0 T1
+  T2`: one Nearby Action with flags `0xA0` (`0x80` an auth tag follows,
+  `0x20` needs keyboard), action type `0x32`, and a 3-byte auth tag.
+  - The tag is SipHash-2-4 keyed with the host's IRK (Koala's `altIRK` from
+    M6), over the 6-byte address the advert is sent from, taking bytes 2-4
+    of the big-endian result.
+  - The iPhone accepts it only at −60 dBm or stronger.
+- **Tried (run 7).** The iPhone heard Koala's advert, at −52 dBm, and parsed
+  it as `NeedsRDLink, NeedsAWDL, NeedsKeyboard`. But it couldn't identify
+  the sender: `### Unable to decrypt activity level with authTag yes
+  identity no error -6727`. Koala had tagged it for the adapter's public
+  address. bluetoothd logged the address it actually came from, a random
+  one.
+- **Windows' advertising address, from an HCI trace.**
+  - The trace: ETW provider `Microsoft-Windows-BTH-BTHPORT`
+    `{8A1F9517-3A8C-4A9E-A018-4F17A200F277}`, all keywords. Event 402 holds
+    the HCI packets as direction, length and bytes. Enabling only the HCI
+    channel's keyword gives nothing.
+  - For each WinRT advert, Windows creates an extended advertising set. It
+    sends LE Set Extended Advertising Data (`0x2037`) first, then LE Set
+    Advertising Set Random Address (`0x2035`) with **a new non-resolvable
+    random address each time**, then enables the set.
+  - Changing the publisher's data while it runs is accepted by WinRT but
+    never reaches the controller: no new `0x2037` is sent.
+  - So through WinRT a host can't know the address before the data is
+    fixed, and the tag can't be right. The way round needs one of: an
+    identification that doesn't depend on the address (the NearbyActionV2
+    path, not yet decoded), a Bluetooth controller Koala drives itself, or
+    another trigger.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.

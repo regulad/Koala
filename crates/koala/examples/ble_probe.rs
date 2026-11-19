@@ -49,8 +49,28 @@ fn main() -> windows::core::Result<()> {
     println!("publishing company 0x{APPLE:04x}, data {hex}, for {seconds} s");
     publisher.Start()?;
     let started = Instant::now();
+    // A third argument: data to swap in halfway, while the advert runs, to see
+    // whether Windows updates it in place (same address) or not at all.
+    let mut update: Option<Vec<u8>> = args
+        .get(2)
+        .map(|hex| (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(&hex[i..i + 2], 16).expect("hex")).collect());
     while started.elapsed() < Duration::from_secs(seconds) {
-        std::thread::sleep(Duration::from_secs(5));
+        std::thread::sleep(Duration::from_secs(2));
+        if started.elapsed() >= Duration::from_secs(seconds / 2)
+            && let Some(new) = update.take()
+        {
+            let manufacturer = publisher.Advertisement()?.ManufacturerData()?;
+            manufacturer.Clear()?;
+            let data = BluetoothLEManufacturerData::new()?;
+            data.SetCompanyId(APPLE)?;
+            let writer = DataWriter::new()?;
+            writer.WriteBytes(&new)?;
+            data.SetData(&writer.DetachBuffer()?)?;
+            match manufacturer.Append(&data) {
+                Ok(()) => println!("swapped the data while running"),
+                Err(e) => println!("the swap failed: {e}"),
+            }
+        }
         println!("{:>3} s: {:?}", started.elapsed().as_secs(), publisher.Status()?);
     }
     publisher.Stop()?;
