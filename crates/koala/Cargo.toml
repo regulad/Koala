@@ -14,4 +14,5 @@ koala-rapport.workspace = true
 qrcode.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
 warlock-client.workspace = true
+windows = { workspace = true, features = ["Devices_Bluetooth", "Devices_Bluetooth_Advertisement", "Foundation", "Foundation_Collections", "Storage_Streams"] }
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_NetworkManagement_Dns"] }
