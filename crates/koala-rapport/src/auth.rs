@@ -96,15 +96,21 @@ pub struct Authenticated {
 }
 
 /// Pair-verify as the client, then encryption. `known` gives a paired peer's
-/// long-term key by its identifier; `auth_type` is the `_auTy` to send
-/// ([`AUTH_TYPE_PAIRED`], [`AUTH_TYPE_SESSION_PAIRED`]).
+/// long-term key by its identifier; `expected` is the peer to check against
+/// when the server names none (an iPhone, to a guest's SessionPaired peer);
+/// `auth_type` is the `_auTy` to send ([`AUTH_TYPE_PAIRED`],
+/// [`AUTH_TYPE_SESSION_PAIRED`]).
 pub async fn pair_verify<S: AsyncRead + AsyncWrite + Unpin>(
     connection: &mut Connection<S>,
     identity: Identity,
     known: impl Fn(&[u8]) -> Option<[u8; 32]>,
+    expected: Option<(Vec<u8>, [u8; 32])>,
     auth_type: u64,
 ) -> Result<Verified, RapportError> {
     let mut verify = VerifyClient::new(identity);
+    if let Some((id, key)) = expected {
+        verify = verify.with_expected_peer(id, key);
+    }
     let first = dict(vec![("_pd", verify.start().into()), ("_auTy", Value::int(auth_type))]);
     connection.send_opack(FrameType::PV_START, &first).await?;
     loop {

@@ -367,6 +367,27 @@ from code; nothing here has been tried yet.
     path, not yet decoded), a Bluetooth controller Koala drives itself, or
     another trigger.
 
+## Phase B over BLE: choosing the IRK to fit the advert (2026-11-19, run 8)
+
+The IRK is Koala's to choose, and the iPhone learns it only in pair-setup.
+So Koala reverses the order:
+1. Start the advert first, with a random tag.
+2. Read its random address from the HCI trace.
+3. Search for an IRK whose tag for that address is the advert's tag. That's
+   about 2^24 SipHash computations, well under a second.
+4. Pair with that IRK as `altIRK`, leaving the advert running.
+
+**It works.**
+- One second after the iPhone entered its mic-only session, its AWDL frames
+  carried its own `_rdlink._tcp` instance: PTR, an SRV with its port and a
+  random UUID host, and TXT.
+- Koala connected to that port over Warlock, and the iPhone answered
+  pair-verify (`_auTy` 8) with M2.
+- That M2's sealed part names no one: it has a signature and no identifier.
+  CoreUtils resolves a SessionPaired peer by trying its keys on the
+  signature. `koala-pairing`'s client now checks such an M2 against the
+  peer it expects.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.

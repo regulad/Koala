@@ -19,6 +19,7 @@ use warlock_client::{Client, PIPE};
 
 use crate::ble::Advert;
 use crate::dnssd::Registration;
+use crate::hci::HciTrace;
 
 /// The ProductType Koala claims: an Apple TV 4K (3rd generation), whose
 /// tvOS 27 offers guest pairing.
@@ -49,11 +50,28 @@ pub async fn run(seconds: u64) -> Result<(), String> {
         info.version, adapter.name, adapter.index, adapter.address, info.radio.state
     );
 
+    // Phase B's BLE advert starts now, before pairing. Windows gives an advert
+    // its random address only after its data is fixed, so the advert can't be
+    // tagged for Koala's IRK; instead Koala reads the address from the HCI
+    // trace and chooses the IRK it will pair with to fit the advert's tag.
+    let mut tag = [0u8; 3];
+    crate::random(&mut tag);
+    let needs_awdl = crate::nearby::needs_awdl(&tag);
+    let trace = HciTrace::start()?;
+    let _advert = Advert::start(&needs_awdl).map_err(|e| format!("BLE: {e}"))?;
+    let sent = [&[0xff, 0x4c, 0x00][..], &needs_awdl].concat();
+    let (set, ble_address) = trace
+        .advert_address(&sent, Duration::from_secs(5))
+        .ok_or("BLE: the HCI trace didn't show the advert's address")?;
+    drop(trace);
+    let irk = crate::nearby::irk_for(&ble_address, &tag);
+    let shown = ble_address.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
+    let hex: String = needs_awdl.iter().map(|b| format!("{b:02x}")).collect();
+    println!("BLE: broadcasting 4c00{hex} from {shown} (advertising set {set}); IRK chosen to match");
+
     // Who Koala is to the iPhone: a UUID identifier (the QR's `_pubID`), a
-    // key pair, and CoreUtils' info block with an IRK, model and name.
+    // key pair, and CoreUtils' info block with that IRK, a model and a name.
     let public_id = crate::uuid();
-    let mut irk = [0u8; 16];
-    crate::random(&mut irk);
     let info_block =
         dict(vec![("altIRK", Value::Bytes(irk.to_vec())), ("model", MODEL.into()), ("name", "Koala".into())]);
     let info_block = apple_opack::pack(&info_block).map_err(|e| e.to_string())?;
@@ -120,7 +138,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("name", "Koala".into()),
                 ]);
                 let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
-                converse(stream, from, &identity, setup, &mut peers, irk, infos).await;
+                converse(stream, from, &identity, setup, &mut peers, infos).await;
             }
             line = advertising.next_value() => match line {
                 Some(Ok(state)) => {
@@ -155,7 +173,6 @@ async fn converse(
     identity: &Identity,
     setup: impl Fn() -> Option<SetupServer>,
     peers: &mut Vec<Peer>,
-    irk: [u8; 16],
     (guest_info, capture_info): (Value, Value),
 ) {
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
@@ -201,7 +218,7 @@ async fn converse(
                         && let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone())
                     {
                         phase_b_started = true;
-                        tokio::spawn(phase_b(address, identity.clone(), iphone, irk, capture_info.clone()));
+                        tokio::spawn(phase_b(address, identity.clone(), iphone, capture_info.clone()));
                     }
                 }
                 _ => {}
@@ -219,31 +236,11 @@ async fn converse(
     }
 }
 
-/// Phase B (`docs/guest-pairing.md`): ask the iPhone onto AWDL with the BLE
-/// advert a tvOS host sends, watch for its `_rdlink._tcp` listener in its
-/// AWDL frames (Warlock's view of it), then start the capture session there.
-async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, irk: [u8; 16], info: Value) {
-    let advert = match crate::ble::adapter_address() {
-        Ok(address) => {
-            let data = crate::nearby::needs_awdl(&irk, &address);
-            let shown = address.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
-            let hex: String = data.iter().map(|b| format!("{b:02x}")).collect();
-            match Advert::start(&data) {
-                Ok(advert) => {
-                    println!("BLE: broadcasting 4c00{hex}, tagged for address {shown} ({:?})", advert.status());
-                    Some(advert)
-                }
-                Err(e) => {
-                    println!("BLE: the advert failed: {e}");
-                    None
-                }
-            }
-        }
-        Err(e) => {
-            println!("BLE: no Bluetooth adapter: {e}");
-            None
-        }
-    };
+/// Phase B (`docs/guest-pairing.md`): with the BLE advert asking the iPhone
+/// onto AWDL already running (see [`run`]), watch for its `_rdlink._tcp`
+/// listener in its AWDL frames (Warlock's view of it), then start the
+/// capture session there.
+async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, info: Value) {
     let warlock = Client::new(PIPE);
     let mac = mac_from_link_local(iphone.ip());
     let started = Instant::now();
@@ -261,7 +258,6 @@ async fn phase_b(iphone: SocketAddrV6, identity: Identity, peer: Peer, irk: [u8;
                 if let Some(port) = rdlink.and_then(|r| r.port) {
                     println!("the iPhone's RDLink listener: port {port}");
                     start_capture(iphone, vec![port], identity, peer, info).await;
-                    drop(advert);
                     return;
                 }
             }
@@ -291,7 +287,8 @@ async fn start_capture(iphone: SocketAddrV6, ports: Vec<u16>, identity: Identity
         };
         let mut connection = Connection::new(stream).with_trace(format!("[iPhone port {port}]"));
         let known = |id: &[u8]| (id == peer.id.as_slice()).then_some(peer.public_key);
-        let verify = pair_verify(&mut connection, identity.clone(), known, AUTH_TYPE_SESSION_PAIRED);
+        let expected = Some((peer.id.clone(), peer.public_key));
+        let verify = pair_verify(&mut connection, identity.clone(), known, expected, AUTH_TYPE_SESSION_PAIRED);
         match tokio::time::timeout(Duration::from_secs(5), verify).await {
             Ok(Ok(_)) => println!("port {port}: pair-verified"),
             Ok(Err(e)) => {
@@ -355,7 +352,11 @@ fn show_qr(url: &str) -> Result<(), String> {
         .light_color(unicode::Dense1x2::Dark)
         .quiet_zone(true)
         .build();
-    let path = std::env::temp_dir().join("koala-guest-qr.bmp");
+    // A new file each time: Photos keeps the last one open, and locked.
+    let mut nonce = [0u8; 4];
+    crate::random(&mut nonce);
+    let name = format!("koala-guest-qr-{}.bmp", nonce.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    let path = std::env::temp_dir().join(name);
     std::fs::write(&path, bitmap(&code, 12)).map_err(|e| format!("{}: {e}", path.display()))?;
     println!("\n{terminal}\n");
     println!("Scan with the iPhone's camera ({}): {url}", path.display());

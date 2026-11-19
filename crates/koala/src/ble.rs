@@ -5,9 +5,7 @@
 //! action type 0x32 (`docs/guest-pairing.md`, "Phase B"); Koala, with no
 //! shared Wi-Fi, has only this way.
 
-use windows::Devices::Bluetooth::Advertisement::{
-    BluetoothLEAdvertisementPublisher, BluetoothLEAdvertisementPublisherStatus, BluetoothLEManufacturerData,
-};
+use windows::Devices::Bluetooth::Advertisement::{BluetoothLEAdvertisementPublisher, BluetoothLEManufacturerData};
 use windows::Storage::Streams::DataWriter;
 
 /// Apple's Bluetooth company identifier.
@@ -31,19 +29,6 @@ impl Advert {
         publisher.Start()?;
         Ok(Self { publisher })
     }
-
-    pub fn status(&self) -> windows::core::Result<BluetoothLEAdvertisementPublisherStatus> {
-        self.publisher.Status()
-    }
-}
-
-/// The default Bluetooth adapter's public address, most significant byte
-/// first. Whether Windows advertises from it, rather than a random address
-/// it doesn't reveal, is untested: the auth tag depends on it.
-pub fn adapter_address() -> windows::core::Result<[u8; 6]> {
-    let adapter = windows::Devices::Bluetooth::BluetoothAdapter::GetDefaultAsync()?.join()?;
-    let address = adapter.BluetoothAddress()?.to_be_bytes();
-    Ok(address[2..].try_into().unwrap())
 }
 
 impl Drop for Advert {

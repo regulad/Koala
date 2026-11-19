@@ -72,8 +72,9 @@ impl VerifyServer {
             }
             ServerState::AwaitingM3 { shared, ours, theirs } => {
                 expect_state(&tlv, 3).map_err(|e| refuse(e, 4))?;
+                let resolve = |given: Option<&[u8]>| given.and_then(|id| known(id).map(|key| (id.to_vec(), key)));
                 let peer_id =
-                    open_signed(&tlv, &shared, b"PV-Msg03", &theirs, &ours, &known).map_err(|e| refuse(e, 4))?;
+                    open_signed(&tlv, &shared, b"PV-Msg03", &theirs, &ours, resolve).map_err(|e| refuse(e, 4))?;
                 let m4 = encode(&[(kind::STATE, &[4])]);
                 Ok(Step::Done { send: Some(m4), result: Verified { peer_id, shared_secret: shared } })
             }
@@ -86,6 +87,7 @@ impl VerifyServer {
 pub struct VerifyClient {
     identity: Identity,
     secret: StaticSecret,
+    expected: Option<(Vec<u8>, [u8; 32])>,
     state: ClientState,
 }
 
@@ -100,7 +102,16 @@ impl VerifyClient {
     pub fn new(identity: Identity) -> Self {
         let mut bytes = [0; 32];
         crate::srp::random(&mut bytes);
-        Self { identity, secret: StaticSecret::from(bytes), state: ClientState::Start }
+        Self { identity, secret: StaticSecret::from(bytes), expected: None, state: ClientState::Start }
+    }
+
+    /// The peer to check M2 against when it names none. An iPhone serving a
+    /// guest's SessionPaired peer sends no identifier: CoreUtils finds the
+    /// peer by trying its keys on the signature ("Resolve identity for
+    /// signature", Koala's trial 8, 2026-11-19).
+    pub fn with_expected_peer(mut self, id: Vec<u8>, public_key: [u8; 32]) -> Self {
+        self.expected = Some((id, public_key));
+        self
     }
 
     /// M1, the first message.
@@ -127,7 +138,12 @@ impl VerifyClient {
                     return Err(PairingError::Malformed("X25519 public key"));
                 }
                 let shared = shared.to_bytes();
-                let peer_id = open_signed(&tlv, &shared, b"PV-Msg02", &theirs, &ours, &known)?;
+                let expected = self.expected.clone();
+                let resolve = |given: Option<&[u8]>| match given {
+                    Some(id) => known(id).map(|key| (id.to_vec(), key)),
+                    None => expected.clone(),
+                };
+                let peer_id = open_signed(&tlv, &shared, b"PV-Msg02", &theirs, &ours, resolve)?;
                 let signature = self.identity.sign(&[&ours[..], self.identity.id(), &theirs].concat());
                 let sealed = seal(
                     &encryption_key(&shared),
@@ -167,25 +183,32 @@ fn agree(theirs: &[u8; 32]) -> Result<([u8; 32], [u8; 32]), PairingError> {
 }
 
 /// Opens the peer's sealed identity and checks its signature over
-/// `their ephemeral key | their id | our ephemeral key`.
+/// `their ephemeral key | their id | our ephemeral key`. `resolve` gives the
+/// peer's identifier and long-term key from the identifier it sent, if any.
+/// When it sent none, the signature may also be over the two ephemeral keys
+/// alone.
 fn open_signed(
     tlv: &Tlv8,
     shared: &[u8; 32],
     label: &[u8; 8],
     theirs: &[u8; 32],
     ours: &[u8; 32],
-    known: &impl Fn(&[u8]) -> Option<[u8; 32]>,
+    resolve: impl Fn(Option<&[u8]>) -> Option<(Vec<u8>, [u8; 32])>,
 ) -> Result<Vec<u8>, PairingError> {
     let sealed = tlv.get(kind::ENCRYPTED_DATA).ok_or(PairingError::Malformed("encrypted data"))?;
     let plain = open(&encryption_key(shared), label, sealed).ok_or(PairingError::Decryption)?;
     let inner = Tlv8::decode(&plain).map_err(|_| PairingError::Malformed("sealed TLV8"))?;
-    let id = inner.get(kind::IDENTIFIER).ok_or(PairingError::Malformed("identifier"))?;
     let signature = inner.get(kind::SIGNATURE).ok_or(PairingError::Malformed("signature"))?;
-    let public_key = known(id).ok_or(PairingError::UnknownPeer)?;
-    if !verify(&public_key, &[&theirs[..], id, ours].concat(), signature) {
+    let given = inner.get(kind::IDENTIFIER);
+    let (id, public_key) = resolve(given).ok_or(PairingError::UnknownPeer)?;
+    let mut signed = vec![[&theirs[..], &id, ours].concat()];
+    if given.is_none() {
+        signed.push([&theirs[..], ours].concat());
+    }
+    if !signed.iter().any(|message| verify(&public_key, message, signature)) {
         return Err(PairingError::Signature);
     }
-    Ok(id.to_vec())
+    Ok(id)
 }
 
 #[cfg(test)]
@@ -242,6 +265,37 @@ mod tests {
         let (c, s) = verify_pair(&impostor, &server, server.public_key(), client.public_key());
         assert_eq!(s.unwrap_err(), PairingError::Signature);
         assert_eq!(c.unwrap_err(), PairingError::Peer(error::AUTHENTICATION));
+    }
+
+    /// An M2 with a signature and no identifier, as an iPhone sends to a
+    /// SessionPaired peer, signed with or without the server's identifier.
+    #[test]
+    fn a_server_that_names_no_one_is_checked_against_the_expected_peer() {
+        for with_id in [true, false] {
+            let (client, server) = (Identity::generate("client"), Identity::generate("server"));
+            let mut c = VerifyClient::new(client.clone()).with_expected_peer(b"server".to_vec(), server.public_key());
+            let m1 = Tlv8::decode(&c.start()).unwrap();
+            let theirs: [u8; 32] = m1.get(kind::PUBLIC_KEY).unwrap().try_into().unwrap();
+            let (shared, ours) = agree(&theirs).unwrap();
+            let signed: Vec<u8> =
+                if with_id { [&ours[..], server.id(), &theirs].concat() } else { [ours, theirs].concat() };
+            let sealed =
+                seal(&encryption_key(&shared), b"PV-Msg02", &encode(&[(kind::SIGNATURE, &server.sign(&signed))]));
+            let m2 = encode(&[(kind::STATE, &[2]), (kind::PUBLIC_KEY, &ours), (kind::ENCRYPTED_DATA, &sealed)]);
+            let nobody = |_: &[u8]| None;
+            assert!(matches!(c.handle(&m2, nobody), Ok(Step::Send(_))), "signed with the identifier: {with_id}");
+        }
+        // And a stranger's signature still fails.
+        let (client, server, stranger) =
+            (Identity::generate("client"), Identity::generate("server"), Identity::generate("server"));
+        let mut c = VerifyClient::new(client).with_expected_peer(b"server".to_vec(), server.public_key());
+        let m1 = Tlv8::decode(&c.start()).unwrap();
+        let theirs: [u8; 32] = m1.get(kind::PUBLIC_KEY).unwrap().try_into().unwrap();
+        let (shared, ours) = agree(&theirs).unwrap();
+        let signature = stranger.sign(&[ours, theirs].concat());
+        let sealed = seal(&encryption_key(&shared), b"PV-Msg02", &encode(&[(kind::SIGNATURE, &signature)]));
+        let m2 = encode(&[(kind::STATE, &[2]), (kind::PUBLIC_KEY, &ours), (kind::ENCRYPTED_DATA, &sealed)]);
+        assert_eq!(c.handle(&m2, |_: &[u8]| None).unwrap_err(), PairingError::Signature);
     }
 
     #[test]

@@ -17,10 +17,25 @@ pub fn auth_tag(irk: &[u8; 16], address: &[u8; 6]) -> [u8; 3] {
     [h[2], h[3], h[4]]
 }
 
-/// The whole advert, after the company ID.
-pub fn needs_awdl(irk: &[u8; 16], address: &[u8; 6]) -> Vec<u8> {
-    let tag = auth_tag(irk, address);
-    vec![0x0f, 0x05, 0xa0, 0x32, tag[0], tag[1], tag[2]]
+/// The whole advert, after the company ID, carrying `tag`.
+pub fn needs_awdl(tag: &[u8; 3]) -> [u8; 7] {
+    [0x0f, 0x05, 0xa0, 0x32, tag[0], tag[1], tag[2]]
+}
+
+/// An IRK for which an advert sent from `address` carries the auth tag
+/// `tag`. Windows picks an advert's random address only after its data is
+/// fixed, so Koala can't tag an advert for its IRK; but it can choose its
+/// IRK, before pairing, for the advert already running. About 2^24 tries.
+pub fn irk_for(address: &[u8; 6], tag: &[u8; 3]) -> [u8; 16] {
+    let mut irk = [0u8; 16];
+    getrandom::fill(&mut irk).expect("the system's random number generator failed");
+    for counter in 0u32.. {
+        irk[12..].copy_from_slice(&counter.to_le_bytes());
+        if auth_tag(&irk, address) == *tag {
+            return irk;
+        }
+    }
+    unreachable!("a 3-byte tag matches within 2^32 tries")
 }
 
 /// SipHash-2-4 (Aumasson and Bernstein), with a 128-bit key.
@@ -81,12 +96,20 @@ mod tests {
         assert_eq!(siphash24(&KEY, &fifteen), 0xa129_ca61_49be_45e5);
     }
 
+    #[test]
+    fn an_irk_can_be_found_for_an_address_and_tag() {
+        let (address, tag) = ([0x02, 0xd5, 0x23, 0xa3, 0xa0, 0x36], [0x12, 0x34, 0x56]);
+        let irk = irk_for(&address, &tag);
+        assert_eq!(auth_tag(&irk, &address), tag);
+    }
+
     /// The worked example from the reverse engineering (IRK 00..0f,
     /// address c0:11:22:33:44:55).
     #[test]
     fn the_advert_carries_the_tag() {
         let address = [0xc0, 0x11, 0x22, 0x33, 0x44, 0x55];
-        assert_eq!(auth_tag(&KEY, &address), [0x37, 0xb4, 0x0c]);
-        assert_eq!(needs_awdl(&KEY, &address), [0x0f, 0x05, 0xa0, 0x32, 0x37, 0xb4, 0x0c]);
+        let tag = auth_tag(&KEY, &address);
+        assert_eq!(tag, [0x37, 0xb4, 0x0c]);
+        assert_eq!(needs_awdl(&tag), [0x0f, 0x05, 0xa0, 0x32, 0x37, 0xb4, 0x0c]);
     }
 }

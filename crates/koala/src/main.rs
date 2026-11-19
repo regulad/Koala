@@ -15,6 +15,7 @@
 mod ble;
 mod dnssd;
 mod guest;
+mod hci;
 mod nearby;
 
 #[tokio::main]
