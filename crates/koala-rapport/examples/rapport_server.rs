@@ -44,16 +44,9 @@ async fn serve(
     known: usize,
 ) -> Result<(), RapportError> {
     let setup = || Some(SetupServer::new(identity.clone(), code));
-    let verified = match serve_pairing(connection, identity, setup, peers).await {
-        Ok(verified) => verified,
-        // pyatv closes after pair-setup, before verifying.
-        Err(RapportError::Closed) if peers.len() > known => {
-            println!("PAIRED");
-            return Ok(());
-        }
-        Err(e) => return Err(e),
-    };
-    println!("VERIFIED {}", String::from_utf8_lossy(&verified.peer_id));
+    let who = serve_pairing(connection, identity, setup, peers).await?;
+    let word = if peers.len() > known { "PAIRED" } else { "VERIFIED" };
+    println!("{word} {}", String::from_utf8_lossy(&who.peer_id));
     loop {
         let (kind, value) = connection.receive_opack().await?;
         if kind != FrameType::E_OPACK {
@@ -62,10 +55,10 @@ async fn serve(
         let Some(message) = Message::parse(value) else { continue };
         match message.kind {
             MessageType::Request => {
-                let name = message.id.unwrap_or_default();
+                let name = message.id.clone().unwrap_or_default();
                 println!("REQUEST {name}");
                 let content = dict(vec![("name", Value::from("Koala test server")), ("_i", Value::from(name))]);
-                let reply = Message::response(message.xid.unwrap_or(0), content);
+                let reply = message.reply(content);
                 connection.send_opack(FrameType::E_OPACK, &reply).await?;
             }
             MessageType::Event => println!("EVENT {}", message.id.unwrap_or_default()),

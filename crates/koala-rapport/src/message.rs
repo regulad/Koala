@@ -37,6 +37,16 @@ impl Message {
         dict(vec![("_x", Value::int(xid)), ("_t", Value::int(3)), ("_c", content)])
     }
 
+    /// The response to this request: its `_x` repeated exactly as it came,
+    /// encoded width included. An iPhone sends 8-byte transaction numbers
+    /// above 2^31; echoed in the 4 bytes that fit, it reads them back as
+    /// negative and finds no request ("Received response XID … with no
+    /// request", Koala's K2 trial, 2026-11-18).
+    pub fn reply(&self, content: Value) -> Value {
+        let xid = self.raw.get("_x").cloned().unwrap_or_else(|| Value::int(self.xid.unwrap_or(0)));
+        dict(vec![("_x", xid), ("_t", Value::int(3)), ("_c", content)])
+    }
+
     pub fn event(id: &str, xid: u64, content: Value) -> Value {
         dict(vec![("_i", id.into()), ("_x", Value::int(xid)), ("_t", Value::int(1)), ("_c", content)])
     }
@@ -67,6 +77,21 @@ pub fn dict(pairs: Vec<(&str, Value)>) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_reply_repeats_the_transaction_number_exactly() {
+        let request = dict(vec![
+            ("_i", "_systemInfo".into()),
+            ("_x", Value::sized(3_805_987_579u64)),
+            ("_t", Value::int(2)),
+            ("_c", dict(vec![])),
+        ]);
+        let request = Message::parse(request).unwrap();
+        let reply = apple_opack::pack(&request.reply(dict(vec![]))).unwrap();
+        // `_x`, then the 8-byte integer tag and value.
+        let wanted = [&[0x42, b'_', b'x', 0x33][..], &3_805_987_579u64.to_le_bytes()].concat();
+        assert!(reply.windows(wanted.len()).any(|w| w == wanted), "{reply:02x?}");
+    }
 
     #[test]
     fn a_request_survives_encoding() {

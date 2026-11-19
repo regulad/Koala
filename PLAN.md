@@ -67,6 +67,9 @@ Milestones (exit criteria):
 - **K0 go/no-go:** Phase 0's questions answered in `docs/`, the path chosen. *Done 2026-11-18: go, Continuity Camera guest path.*
 - **K1 Rapport:** Koala's client pair-sets-up (PIN on the TV) and pair-verifies with the Apple TV 4K over the LAN and exchanges an E_OPACK request; pyatv's client pairs with Koala's server, including a fixed-PIN (`passwordType` 10) SessionPaired pair-setup with the identity info block.
 - **K2 (moment of truth):** the iPhone scans Koala's QR, finds Koala's `_rdlink._tcp` over Warlock, and completes guest pair-setup; its Continuity Camera screen opens in mic-only mode.
+  - *Done 2026-11-18, on the fourth try* (`docs/guest-pairing.md`, "Tried with an iPhone"). The iPhone (iOS 27.2.1) paired over AWDL and entered a mic-only discovery session with Koala as its confirmed device.
+  - The tries found two things the reverse engineering hadn't shown: encryption starts straight after pair-setup, and a response must echo `_x` at its sent width.
+  - The tool that made the difference was the iPhone's own log over USB: pymobiledevice3 (GPL-3.0, a tool only) in a venv, `syslog live -ei 'rapportd|ContinuityCapture|…'`.
 - **K3:** the iPhone brought onto AWDL (`_rdNeedsAWDL`), Koala connected to its RDLink server and pair-verified, and a mic-only `com.apple.continuitycapture` session negotiated. Needs more RE first: the control messages, the NSKeyedArchiver configuration, the stream descriptors and the AVConference/SRTP keying.
 - **K4:** the iPhone's microphone plays through "CABLE Output" with stable latency and drift. The repository is published around here.
 

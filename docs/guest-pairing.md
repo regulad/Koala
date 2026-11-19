@@ -225,6 +225,60 @@ host's verified identity and the QR's start reason
     flags `0x3000080000`), and arms a 15-second timer per request
     (`_serverReceivedNeedsAWDLEvent:`, `0x1000efbec`).
 
+## Tried with an iPhone (2026-11-18): Phase A works
+
+`koala guest` paired with an iPhone on iOS 27.2.1 (24B156, iPhone18,1)
+over Warlock, and the iPhone entered a mic-only discovery session with it.
+This is K2. Koala traced every frame. The iPhone's own log, streamed over
+USB with pymobiledevice3 (`syslog live`), shows its side.
+
+- **Discovery.** rapportd browsed `_rdlink._tcp` on `awdl0` and found
+  Koala's instance from Warlock's frames. It logged `AWDL pairing device:
+  awdlPairingID … sessionPairingID …` (the same UUID, from `rpPI` and the
+  QR). It resolved the SRV to the computer name and the AAAA to the adapter's
+  link-local address, then connected over AWDL. Random `rpBA` and `rpAD`
+  were accepted.
+- **Pair-verify first.** The iPhone opened with `PV_Start` and `_auTy` 8. It
+  failed, as it should with a stranger: `Resolve identity for signature
+  failed: 0x4C02 < SameAccountDevices SharedTVUserDevices
+  SessionPairedDevices >`. Then `Client PairSetup retry`.
+- **Pair-setup.** `PS_Start` carried `_pd` (method 0, state 1, nothing else),
+  `_auTy` 8 and `_pwTy` 10. Each `PS_Next` repeated `_auTy` and `_pwTy`.
+  - Koala's SRP (`koala-pairing`, pyatv's encodings) was accepted, and so
+    was Koala's M6 (`PairSetup client done -- server authenticated`).
+  - The iPhone's M5 info block is OPACK `{altIRK, accountID, model, wifiMAC,
+    name, mac}`. Its `accountID` equals its pair-setup identifier.
+  - Koala's M2 carried item 27 = 1. Whether it's needed wasn't tested.
+- **Encrypted from M6.** With no pair-verify, the iPhone sent its next frame
+  encrypted (`Open stream 'main'`). The keys come from the SRP session key
+  `K`, exactly as pair-verify's come from its shared secret: HKDF-SHA512
+  with an empty salt and `ClientEncrypt-main`/`ServerEncrypt-main`.
+- **`_systemInfo`.** Its first request (`Client state: CSessionStart ->
+  CSessionWait`).
+  - The content is `_clSrv` = `com.apple.ddui.guestpairing`, `_i` and
+    `_idsID` (its Rapport identifier), `_spID` (its pair-setup identifier),
+    `_pubID`, `model`, `name`, `_sv` = `715.2`, `_bf`, `_cf`; the frame also
+    has `_btHP` = false.
+  - **Koala's answer mirrors it with Koala's values**: model `AppleTV14,1`,
+    and `_spID` Koala's pair-setup identifier.
+  - **The answer's `_x` must repeat the request's exactly, width included.**
+    The iPhone sends an 8-byte integer. Echoed in the 4 bytes that fit a
+    value above 2^31, it read back negative: `Received response XID … with
+    no request`. Then the connection idled until the scanner gave up after
+    about 10 s, and the iPhone's "Connecting" banner just faded.
+- **In session.** With the answer matched:
+  - `Client state: CSessionWait -> CMsg`, `External state changed: Unknown
+    -> Ready`;
+  - `Discovery session state OutOfSession -> InSession, peer <Koala's
+    pair-setup identifier>, startReason MicOnly`;
+  - `Device confirmed changed NULL -> <Koala's identifier>`;
+  - `Posting notification for wombat activity change: InDiscoverySession`.
+
+  The iPhone then stopped its pairing browser, and sharingd started BLE
+  Nearby Action adverts.
+- **Open:** CMContinuityCaptureRemote logged `Could not resolved stream
+  format` as it entered the session.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.

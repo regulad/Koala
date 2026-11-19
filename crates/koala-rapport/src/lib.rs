@@ -1,9 +1,9 @@
 //! Apple's Rapport protocol, which Apple calls the companion link: how Apple
 //! devices nearby talk to each other once paired.
 //!
-//! A connection carries frames ([`frame`]). The first ones pair the two
-//! devices ([`auth`], on `koala-pairing`): pair-setup with a setup code the
-//! first time, pair-verify every time. After pair-verify every frame is
+//! A connection carries frames ([`frame`]). The first ones authenticate the
+//! two devices ([`auth`], on `koala-pairing`): pair-setup with a setup code
+//! the first time, pair-verify after that. Either leaves every later frame
 //! encrypted ([`cipher`]), and the two exchange OPACK requests, responses and
 //! events ([`message`]).
 //!
@@ -41,13 +41,35 @@ pub enum RapportError {
 mod tests {
     use apple_opack::Value;
     use koala_pairing::{Identity, Peer, SetupServer};
+    use tokio::net::TcpStream;
 
     use super::*;
-    use crate::auth::{PASSWORD_TYPE_PIN, pair_setup, pair_verify, serve_pairing};
+    use crate::auth::{Method, PASSWORD_TYPE_PIN, pair_setup, pair_verify, serve_pairing};
     use crate::message::dict;
 
-    /// Pair-setup on one connection, pair-verify on the next, then an
-    /// encrypted request and response: the whole client-server exchange.
+    /// Answers one `_ping` request.
+    async fn pong(c: &mut Connection<TcpStream>) {
+        let (kind, request) = c.receive_opack().await.unwrap();
+        assert_eq!(kind, FrameType::E_OPACK);
+        let request = Message::parse(request).unwrap();
+        assert_eq!(request.id.as_deref(), Some("_ping"));
+        let reply = Message::response(request.xid.unwrap(), dict(vec![("pong", true.into())]));
+        c.send_opack(FrameType::E_OPACK, &reply).await.unwrap();
+    }
+
+    /// Sends a `_ping` request and checks the answer.
+    async fn ping(c: &mut Connection<TcpStream>, xid: u64) {
+        assert!(c.is_encrypted());
+        c.send_opack(FrameType::E_OPACK, &Message::request("_ping", xid, dict(vec![]))).await.unwrap();
+        let (_, reply) = c.receive_opack().await.unwrap();
+        let reply = Message::parse(reply).unwrap();
+        assert_eq!(reply.kind, MessageType::Response);
+        assert_eq!(reply.xid, Some(xid));
+        assert_eq!(reply.content.get("pong"), Some(&Value::Bool(true)));
+    }
+
+    /// Pair-setup, then an encrypted request on the same connection; then
+    /// pair-verify on a new one, and another request.
     #[tokio::test]
     async fn a_client_pairs_verifies_and_talks_to_a_server() {
         let (server_id, client_id) = (Identity::generate("server"), Identity::generate("client"));
@@ -58,44 +80,32 @@ mod tests {
             let server_id = server_id.clone();
             async move {
                 let mut peers: Vec<Peer> = Vec::new();
-                // The first connection pairs, then verifies.
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut c = Connection::new(stream);
                 let setup = || Some(SetupServer::new(server_id.clone(), "1234"));
-                serve_pairing(&mut c, &server_id, setup, &mut peers).await.unwrap();
-                // The second only verifies, and answers one request.
+                let who = serve_pairing(&mut c, &server_id, setup, &mut peers).await.unwrap();
+                assert_eq!((who.peer_id.as_slice(), who.method), (&b"client"[..], Method::Setup));
+                pong(&mut c).await;
+
                 let (stream, _) = listener.accept().await.unwrap();
                 let mut c = Connection::new(stream);
-                let verified = serve_pairing(&mut c, &server_id, || None, &mut peers).await.unwrap();
-                assert_eq!(verified.peer_id, b"client");
-                let (kind, request) = c.receive_opack().await.unwrap();
-                assert_eq!(kind, FrameType::E_OPACK);
-                let request = Message::parse(request).unwrap();
-                assert_eq!(request.id.as_deref(), Some("_ping"));
-                let reply = Message::response(request.xid.unwrap(), dict(vec![("pong", true.into())]));
-                c.send_opack(FrameType::E_OPACK, &reply).await.unwrap();
+                let who = serve_pairing(&mut c, &server_id, || None, &mut peers).await.unwrap();
+                assert_eq!((who.peer_id.as_slice(), who.method), (&b"client"[..], Method::Verify));
+                pong(&mut c).await;
             }
         });
 
-        let stream = tokio::net::TcpStream::connect(address).await.unwrap();
-        let mut c = Connection::new(stream);
+        let mut c = Connection::new(TcpStream::connect(address).await.unwrap());
         let paired = pair_setup(&mut c, client_id.clone(), "1234", PASSWORD_TYPE_PIN).await.unwrap();
         let server_peer = paired.peer.unwrap();
         assert_eq!(server_peer.public_key, server_id.public_key());
-        let known = |id: &[u8]| (id == server_peer.id.as_slice()).then_some(server_peer.public_key);
-        pair_verify(&mut c, client_id.clone(), known).await.unwrap();
+        ping(&mut c, 40).await;
         drop(c);
 
-        let stream = tokio::net::TcpStream::connect(address).await.unwrap();
-        let mut c = Connection::new(stream);
+        let known = |id: &[u8]| (id == server_peer.id.as_slice()).then_some(server_peer.public_key);
+        let mut c = Connection::new(TcpStream::connect(address).await.unwrap());
         pair_verify(&mut c, client_id, known).await.unwrap();
-        assert!(c.is_encrypted());
-        c.send_opack(FrameType::E_OPACK, &Message::request("_ping", 41, dict(vec![]))).await.unwrap();
-        let (_, reply) = c.receive_opack().await.unwrap();
-        let reply = Message::parse(reply).unwrap();
-        assert_eq!(reply.kind, MessageType::Response);
-        assert_eq!(reply.xid, Some(41));
-        assert_eq!(reply.content.get("pong"), Some(&Value::Bool(true)));
+        ping(&mut c, 41).await;
         server.await.unwrap();
     }
 }

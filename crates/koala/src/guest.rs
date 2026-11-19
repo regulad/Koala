@@ -12,7 +12,7 @@ use koala_pairing::{Identity, Peer, SetupServer};
 use koala_rapport::auth::serve_pairing;
 use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
-use qrcode::render::{svg, unicode};
+use qrcode::render::unicode;
 use qrcode::{EcLevel, QrCode};
 use tokio::net::{TcpListener, TcpStream};
 use warlock_client::{Client, PIPE};
@@ -51,6 +51,9 @@ pub async fn run(seconds: u64) -> Result<(), String> {
     let identity = Identity::generate(public_id.as_bytes()).with_info(info_block);
     let pairing_id = crate::uuid();
     let pin = crate::uuid();
+    // Our Rapport identifier (`_i`, `_idsID`), which an iPhone uses for a
+    // session-paired peer in place of an IDS device ID.
+    let rapport_id = crate::uuid();
 
     // Where the iPhone connects: the adapter's link-local address.
     let address = SocketAddr::V6(SocketAddrV6::new(adapter.address, 0, 0, adapter.index));
@@ -93,7 +96,21 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                 let (stream, from) = accepted.map_err(|e| e.to_string())?;
                 println!("\nconnection from {from}");
                 let setup = || Some(SetupServer::new(identity.clone(), pin.as_str()).with_m2_items(vec![(27, vec![1])]));
-                converse(stream, from, &identity, setup, &mut peers).await;
+                // What we answer `_systemInfo` with: the keys the iPhone's own
+                // request carries, with our values.
+                let system_info = dict(vec![
+                    ("_i", rapport_id.as_str().into()),
+                    ("_idsID", rapport_id.as_str().into()),
+                    ("_pubID", rp_ba.as_str().into()),
+                    ("_spID", public_id.as_str().into()),
+                    ("_sv", RAPPORT_VERSION.into()),
+                    ("_bf", Value::int(0)),
+                    ("_cf", Value::int(512)),
+                    ("_clSrv", "com.apple.ddui.guestpairing".into()),
+                    ("model", MODEL.into()),
+                    ("name", "Koala".into()),
+                ]);
+                converse(stream, from, &identity, setup, &mut peers, &system_info).await;
             }
             line = advertising.next_value() => match line {
                 Some(Ok(state)) => {
@@ -126,6 +143,7 @@ async fn converse(
     identity: &Identity,
     setup: impl Fn() -> Option<SetupServer>,
     peers: &mut Vec<Peer>,
+    system_info: &Value,
 ) {
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
     let known = peers.len();
@@ -140,7 +158,9 @@ async fn converse(
         }
     }
     match result {
-        Ok(verified) => println!("VERIFIED {}: encrypted from here", String::from_utf8_lossy(&verified.peer_id)),
+        Ok(who) => {
+            println!("AUTHENTICATED {} by {:?}: encrypted from here", String::from_utf8_lossy(&who.peer_id), who.method)
+        }
         Err(RapportError::Closed) => {
             println!("closed during pairing");
             return;
@@ -154,7 +174,11 @@ async fn converse(
         match connection.receive_opack().await {
             Ok((FrameType::E_OPACK, value)) => match Message::parse(value) {
                 Some(message) if message.kind == MessageType::Request => {
-                    let reply = Message::response(message.xid.unwrap_or(0), dict(vec![]));
+                    let content = match message.id.as_deref() {
+                        Some("_systemInfo") => system_info.clone(),
+                        _ => dict(vec![]),
+                    };
+                    let reply = message.reply(content);
                     if let Err(e) = connection.send_opack(FrameType::E_OPACK, &reply).await {
                         println!("answering failed: {e}");
                         return;
@@ -175,7 +199,8 @@ async fn converse(
     }
 }
 
-/// Prints the QR code (light on dark, as terminals are) and saves it as SVG.
+/// Prints the QR code (light on dark, as terminals are), saves it as a
+/// bitmap, and opens that in Photos.
 fn show_qr(url: &str) -> Result<(), String> {
     let code = QrCode::with_error_correction_level(url, EcLevel::L).map_err(|e| e.to_string())?;
     let terminal = code
@@ -184,12 +209,53 @@ fn show_qr(url: &str) -> Result<(), String> {
         .light_color(unicode::Dense1x2::Dark)
         .quiet_zone(true)
         .build();
-    let path = std::env::temp_dir().join("koala-guest-qr.svg");
-    let image = code.render::<svg::Color<'_>>().min_dimensions(480, 480).build();
-    std::fs::write(&path, image).map_err(|e| format!("{}: {e}", path.display()))?;
+    let path = std::env::temp_dir().join("koala-guest-qr.bmp");
+    std::fs::write(&path, bitmap(&code, 12)).map_err(|e| format!("{}: {e}", path.display()))?;
     println!("\n{terminal}\n");
     println!("Scan with the iPhone's camera ({}): {url}", path.display());
     // On screen, where a camera can see it.
-    let _ = std::process::Command::new("explorer.exe").arg(&path).spawn();
+    let photos = format!("ms-photos:viewer?fileName={}", path.display());
+    let _ = std::process::Command::new("explorer.exe").arg(photos).spawn();
     Ok(())
+}
+
+/// The QR code as a 24-bit BMP, `scale` pixels a module, with the standard
+/// four-module quiet zone.
+fn bitmap(code: &QrCode, scale: usize) -> Vec<u8> {
+    const QUIET: usize = 4;
+    let modules = code.width();
+    let colors = code.to_colors();
+    let side = (modules + 2 * QUIET) * scale;
+    let row_len = (side * 3).div_ceil(4) * 4;
+    let image_len = row_len * side;
+    let mut out = Vec::with_capacity(54 + image_len);
+    // BITMAPFILEHEADER, then BITMAPINFOHEADER.
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&((54 + image_len) as u32).to_le_bytes());
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(&54u32.to_le_bytes());
+    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(side as i32).to_le_bytes());
+    out.extend_from_slice(&(side as i32).to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&24u16.to_le_bytes());
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(&(image_len as u32).to_le_bytes());
+    out.extend_from_slice(&[0; 16]);
+    // Rows run bottom to top.
+    for y in (0..side).rev() {
+        let row_start = out.len();
+        for x in 0..side {
+            let (mx, my) = ((x / scale).checked_sub(QUIET), (y / scale).checked_sub(QUIET));
+            let dark = match (mx, my) {
+                (Some(mx), Some(my)) if mx < modules && my < modules => {
+                    colors[my * modules + mx] == qrcode::Color::Dark
+                }
+                _ => false,
+            };
+            out.extend_from_slice(if dark { &[0, 0, 0] } else { &[255, 255, 255] });
+        }
+        out.resize(row_start + row_len, 0);
+    }
+    out
 }

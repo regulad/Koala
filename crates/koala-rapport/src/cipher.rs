@@ -33,8 +33,9 @@ pub struct Cipher {
 }
 
 impl Cipher {
-    /// The cipher for our `role`, from pair-verify's shared secret.
-    pub fn new(shared_secret: &[u8; 32], role: Role) -> Self {
+    /// The cipher for our `role`, from pair-verify's shared secret or
+    /// pair-setup's SRP session key.
+    pub fn new(shared_secret: &[u8], role: Role) -> Self {
         let client = hkdf_sha512(shared_secret, b"", b"ClientEncrypt-main");
         let server = hkdf_sha512(shared_secret, b"", b"ServerEncrypt-main");
         let (send, receive) = match role {
