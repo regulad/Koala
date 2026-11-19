@@ -1,0 +1,46 @@
+# pre-commit (https://pre-commit.com) hooks, as in Warlock. They run on every
+# commit once installed (`pre-commit install`, or globally through an init
+# template); `pre-commit run --all-files` runs them on the whole tree.
+#
+# Needs on PATH: cargo with its fmt and clippy subcommands, and cargo-deny.
+#
+# The licence text stays exactly as published.
+exclude: '^LICENSE\.md$'
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+  - repo: local
+    hooks:
+      # Formats in place (rustfmt.toml); a commit that needed it fails once,
+      # with the changes left to stage.
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all
+        language: system
+        files: '\.rs$|(^|/)rustfmt\.toml$'
+        pass_filenames: false
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        language: system
+        files: '\.rs$|(^|/)Cargo\.(toml|lock)$'
+        pass_filenames: false
+      # Dependencies: licences against Koala's licence zone, RustSec
+      # advisories, banned crates and sources (deny.toml). Fetches the
+      # advisory database, so it needs the network.
+      - id: cargo-deny
+        name: cargo deny
+        entry: cargo deny check
+        language: system
+        files: '(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
+        pass_filenames: false

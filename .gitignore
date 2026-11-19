@@ -1,0 +1,4 @@
+/target
+# Captures can hold personal data (device names, addresses): never committed.
+*.pcapng
+/captures/
