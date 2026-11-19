@@ -5,16 +5,19 @@
 //! a Rapport server for its pair-setup (password type 10, the QR's PIN).
 
 use std::net::{SocketAddr, SocketAddrV6};
+use std::sync::Arc;
 use std::time::Duration;
 
 use apple_opack::Value;
 use koala_pairing::{Identity, Peer, SetupServer};
-use koala_rapport::auth::serve_pairing;
+use koala_rapport::auth::{AUTH_TYPE_SESSION_PAIRED, pair_verify, serve_pairing};
 use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
 use qrcode::render::unicode;
 use qrcode::{EcLevel, QrCode};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 use warlock_client::{Client, PIPE};
 
 use crate::dnssd::Registration;
@@ -29,6 +32,19 @@ const MIC_ONLY: u8 = 3;
 const PAIRING_FLAGS: &str = "0x80800";
 /// The Rapport version tvOS 27's rapportd advertises.
 const RAPPORT_VERSION: &str = "715.2";
+/// The Rapport service of guest pairing (`_clSrv`).
+const GUEST_PAIRING_SERVICE: &str = "com.apple.ddui.guestpairing";
+/// The Rapport service of a Continuity Capture session (`_clSrv`), whose
+/// RemoteDisplay session start launches the iPhone's capture daemon.
+const CAPTURE_SERVICE: &str = "com.apple.continuitycapture";
+/// How long the answer to the iPhone's `_systemInfo` waits for the scan.
+const SCAN_WAIT: Duration = Duration::from_secs(8);
+/// Ports probed at once, and how long each may take. The iPhone drops a
+/// connection to a closed port without answering (2026-11-19: the whole
+/// range took 16.6 s at 1024 × 1 s), so each probe of a closed port waits
+/// out its time.
+const SCAN_PARALLEL: usize = 2048;
+const SCAN_TIMEOUT: Duration = Duration::from_millis(600);
 
 /// Runs for `seconds`, then withdraws the advert and returns.
 pub async fn run(seconds: u64) -> Result<(), String> {
@@ -98,7 +114,7 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                 let setup = || Some(SetupServer::new(identity.clone(), pin.as_str()).with_m2_items(vec![(27, vec![1])]));
                 // What we answer `_systemInfo` with: the keys the iPhone's own
                 // request carries, with our values.
-                let system_info = dict(vec![
+                let system_info = |service: &str| dict(vec![
                     ("_i", rapport_id.as_str().into()),
                     ("_idsID", rapport_id.as_str().into()),
                     ("_pubID", rp_ba.as_str().into()),
@@ -106,11 +122,12 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                     ("_sv", RAPPORT_VERSION.into()),
                     ("_bf", Value::int(0)),
                     ("_cf", Value::int(512)),
-                    ("_clSrv", "com.apple.ddui.guestpairing".into()),
+                    ("_clSrv", service.into()),
                     ("model", MODEL.into()),
                     ("name", "Koala".into()),
                 ]);
-                converse(stream, from, &identity, setup, &mut peers, &system_info).await;
+                let infos = (system_info(GUEST_PAIRING_SERVICE), system_info(CAPTURE_SERVICE));
+                converse(stream, from, &identity, setup, &mut peers, &warlock, infos).await;
             }
             line = advertising.next_value() => match line {
                 Some(Ok(state)) => {
@@ -137,17 +154,37 @@ pub async fn run(seconds: u64) -> Result<(), String> {
 }
 
 /// One connection: pairing, then whatever the peer sends, until it closes.
+///
+/// While the iPhone is pairing, its AWDL is up: Koala scans it for the
+/// listener its capture session needs (`docs/guest-pairing.md`, "Phase B"),
+/// which it advertises on AWDL only when asked over BLE or Wi-Fi. The
+/// answer to its `_systemInfo` waits for the scan (the iPhone allows about
+/// 10 s), and then Koala tries to start a capture session on each open port.
 async fn converse(
     stream: TcpStream,
     from: SocketAddr,
     identity: &Identity,
     setup: impl Fn() -> Option<SetupServer>,
     peers: &mut Vec<Peer>,
-    system_info: &Value,
+    warlock: &Client,
+    (guest_info, capture_info): (Value, Value),
 ) {
+    let mut scan = match from {
+        SocketAddr::V6(iphone) => Some(tokio::spawn(scan(iphone))),
+        SocketAddr::V4(_) => None,
+    };
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
     let known = peers.len();
     let result = serve_pairing(&mut connection, identity, setup, peers).await;
+    let iphone = peers[known..].first().cloned();
+    if let (SocketAddr::V6(address), Some(_)) = (from, &iphone) {
+        // What Warlock hears the iPhone advertise.
+        let mac = mac_from_link_local(address.ip());
+        match warlock.peer(&mac).await {
+            Ok(peer) => println!("Warlock's view of {mac}: {peer:?}"),
+            Err(e) => println!("Warlock has no peer {mac}: {e}"),
+        }
+    }
     for peer in &peers[known..] {
         println!("PAIRED with {}", String::from_utf8_lossy(&peer.id));
         if let Some(info) = &peer.info {
@@ -174,14 +211,36 @@ async fn converse(
         match connection.receive_opack().await {
             Ok((FrameType::E_OPACK, value)) => match Message::parse(value) {
                 Some(message) if message.kind == MessageType::Request => {
-                    let content = match message.id.as_deref() {
-                        Some("_systemInfo") => system_info.clone(),
-                        _ => dict(vec![]),
-                    };
+                    let is_system_info = message.id.as_deref() == Some("_systemInfo");
+                    // The scan: waited for a while, then followed up whenever it ends.
+                    let mut follow_up = None;
+                    if is_system_info && let Some(mut task) = scan.take() {
+                        let early = tokio::time::timeout(SCAN_WAIT, &mut task).await;
+                        if early.is_err() {
+                            println!("answering before the scan ends ({} s)", SCAN_WAIT.as_secs());
+                        }
+                        if let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone()) {
+                            let (identity, info) = (identity.clone(), capture_info.clone());
+                            follow_up = Some(async move {
+                                let ports = match early {
+                                    Ok(done) => done.unwrap_or_default(),
+                                    Err(_) => task.await.unwrap_or_default(),
+                                };
+                                println!("open TCP ports on the iPhone: {ports:?}");
+                                if !ports.is_empty() {
+                                    start_capture(address, ports, identity, iphone, info).await;
+                                }
+                            });
+                        }
+                    }
+                    let content = if is_system_info { guest_info.clone() } else { dict(vec![]) };
                     let reply = message.reply(content);
                     if let Err(e) = connection.send_opack(FrameType::E_OPACK, &reply).await {
                         println!("answering failed: {e}");
                         return;
+                    }
+                    if let Some(follow_up) = follow_up {
+                        tokio::spawn(follow_up);
                     }
                 }
                 _ => {}
@@ -197,6 +256,98 @@ async fn converse(
             }
         }
     }
+}
+
+/// The iPhone's open TCP ports in its ephemeral range, where rapportd's
+/// listeners are.
+async fn scan(iphone: SocketAddrV6) -> Vec<u16> {
+    let started = std::time::Instant::now();
+    let slots = Arc::new(Semaphore::new(SCAN_PARALLEL));
+    let mut probes = JoinSet::new();
+    for port in 49152..=u16::MAX {
+        let slot = slots.clone().acquire_owned().await.expect("the semaphore stays open");
+        let mut address = iphone;
+        address.set_port(port);
+        probes.spawn(async move {
+            let _slot = slot;
+            let open = matches!(tokio::time::timeout(SCAN_TIMEOUT, TcpStream::connect(address)).await, Ok(Ok(_)));
+            if open {
+                println!("open: TCP port {port}, {:.1} s into the scan", started.elapsed().as_secs_f32());
+            }
+            open.then_some(port)
+        });
+    }
+    let mut open: Vec<u16> = probes.join_all().await.into_iter().flatten().collect();
+    open.sort_unstable();
+    println!("scanned the iPhone in {:.1} s", started.elapsed().as_secs_f32());
+    open
+}
+
+/// Tries each port as the iPhone's RDLink server: pair-verify as the paired
+/// Apple TV, then the request that starts a RemoteDisplay session for
+/// Continuity Capture, and everything the iPhone sends back.
+async fn start_capture(iphone: SocketAddrV6, ports: Vec<u16>, identity: Identity, peer: Peer, info: Value) {
+    for port in ports {
+        let mut address = iphone;
+        address.set_port(port);
+        let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(address)).await else {
+            println!("port {port}: no connection");
+            continue;
+        };
+        let mut connection = Connection::new(stream).with_trace(format!("[iPhone port {port}]"));
+        let known = |id: &[u8]| (id == peer.id.as_slice()).then_some(peer.public_key);
+        let verify = pair_verify(&mut connection, identity.clone(), known, AUTH_TYPE_SESSION_PAIRED);
+        match tokio::time::timeout(Duration::from_secs(5), verify).await {
+            Ok(Ok(_)) => println!("port {port}: pair-verified"),
+            Ok(Err(e)) => {
+                println!("port {port}: pair-verify failed: {e}");
+                continue;
+            }
+            Err(_) => {
+                println!("port {port}: no answer to pair-verify");
+                continue;
+            }
+        }
+        let mut request = Message::request("_systemInfo", 1, info.clone());
+        if let Value::Dict(pairs) = &mut request {
+            pairs.push(("_btHP".into(), false.into()));
+        }
+        if let Err(e) = connection.send_opack(FrameType::E_OPACK, &request).await {
+            println!("port {port}: sending _systemInfo failed: {e}");
+            continue;
+        }
+        // Everything it sends, for a while; requests get an empty answer.
+        let listening = async {
+            loop {
+                match connection.receive_opack().await {
+                    Ok((FrameType::E_OPACK, value)) => {
+                        if let Some(message) = Message::parse(value)
+                            && message.kind == MessageType::Request
+                        {
+                            let reply = message.reply(dict(vec![]));
+                            if connection.send_opack(FrameType::E_OPACK, &reply).await.is_err() {
+                                return;
+                            }
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("port {port}: {e}");
+                        return;
+                    }
+                }
+            }
+        };
+        let _ = tokio::time::timeout(Duration::from_secs(60), listening).await;
+        return;
+    }
+}
+
+/// The MAC address in an EUI-64 link-local address, as Warlock names peers.
+fn mac_from_link_local(address: &std::net::Ipv6Addr) -> String {
+    let o = address.octets();
+    let mac = [o[8] ^ 0x02, o[9], o[10], o[13], o[14], o[15]];
+    mac.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":")
 }
 
 /// Prints the QR code (light on dark, as terminals are), saves it as a

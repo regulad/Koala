@@ -30,6 +30,9 @@ pub const PASSWORD_TYPE_PIN: u64 = 1;
 pub const PASSWORD_TYPE_QR_CODE: u64 = 10;
 /// The `_auTy` pyatv sends in `PV_Start`.
 pub const AUTH_TYPE_PAIRED: u64 = 4;
+/// The `_auTy` of a guest's SessionPaired identity (rapportd's
+/// authentication type 8).
+pub const AUTH_TYPE_SESSION_PAIRED: u64 = 8;
 
 /// The peers a server has paired with.
 pub trait PeerStore {
@@ -93,14 +96,16 @@ pub struct Authenticated {
 }
 
 /// Pair-verify as the client, then encryption. `known` gives a paired peer's
-/// long-term key by its identifier.
+/// long-term key by its identifier; `auth_type` is the `_auTy` to send
+/// ([`AUTH_TYPE_PAIRED`], [`AUTH_TYPE_SESSION_PAIRED`]).
 pub async fn pair_verify<S: AsyncRead + AsyncWrite + Unpin>(
     connection: &mut Connection<S>,
     identity: Identity,
     known: impl Fn(&[u8]) -> Option<[u8; 32]>,
+    auth_type: u64,
 ) -> Result<Verified, RapportError> {
     let mut verify = VerifyClient::new(identity);
-    let first = dict(vec![("_pd", verify.start().into()), ("_auTy", Value::int(AUTH_TYPE_PAIRED))]);
+    let first = dict(vec![("_pd", verify.start().into()), ("_auTy", Value::int(auth_type))]);
     connection.send_opack(FrameType::PV_START, &first).await?;
     loop {
         let reply = expect(connection, FrameType::PV_NEXT).await?;

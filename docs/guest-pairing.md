@@ -279,6 +279,62 @@ USB with pymobiledevice3 (`syslog live`), shows its side.
 - **Open:** CMContinuityCaptureRemote logged `Could not resolved stream
   format` as it entered the session.
 
+## Phase B: what starts the capture side (static analysis, 2026-11-19)
+
+The trial above left the iPhone InSession with nothing on screen. Two more
+studies of the same builds explain why, and what a host does next. Each is
+from code; nothing here has been tried yet.
+
+- **Nothing launched the capture daemon.** The iPhone's side is
+  `/usr/libexec/continuitycaptured`, which creates `CMContinuityCaptureDServer`.
+  launchd starts it only for a rapport launch event, the cheapest being a
+  RemoteDisplay session for `com.apple.continuitycapture`. The InSession
+  callback alone launches nothing, which is why its first log line, `Session
+  state changed to %d`, never appeared. `Could not resolved stream format`
+  only drops a video format from the capabilities, and is harmless.
+- **The session start.** The host connects to the iPhone's RDLink listener and
+  pair-verifies with the Phase A keys (`_auTy` 8). It then sends `_systemInfo`
+  with `_clSrv` = `com.apple.continuitycapture`; there is no other session
+  wrapper. rapportd checks that the peer is an Apple TV model and the
+  confirmed device, then hands the connection to `continuitycaptured`, which
+  launches the mic-only screen before any media negotiation.
+- **After that, as a tvOS host does it.**
+  1. The event `ContinuityCaptureSessionEventID`, with `MessageType` 0,
+     `SessionID`, `PreStartConfiguration` and `StreamsSetup`.
+     - `PreStartConfiguration` is an NSKeyedArchiver
+       `CMContinuityCaptureConfiguration`: `entity` 3, a `sessionID` UUID,
+       `audioDeviceMode`.
+     - `StreamsSetup` lists Control, Command and Data as TCP (type 2), and
+       `ContinuityCaptureMediaMicrophone` as UDP (type 3).
+  2. The iPhone opens each stream with `_streamStart`, and the host answers:
+     - TCP streams: `{_streamKey: X25519 public key, _streamPort}`. Each is a
+       new Rapport connection, encrypted with keys from that X25519 secret.
+     - The microphone: `{_streamAddr, _streamMACAddr, _streamKey: 32 random
+       bytes, _streamPort}`.
+  3. Per stream, the host sends `{MessageType 3}` once it is up, and
+     `{MessageType 2}` again when the iPhone sends `{MessageType 1}`.
+  4. On Command: `ContinuityCaptureStreamEventID {ContinuityCaptureSelector
+     1 (StartStream), ContinuityCaptureArgs [config, option, 0]}`.
+  5. On Control, AVConference negotiation: the iPhone offers (`Selector` 2),
+     the host answers.
+  6. SRTP key: the host's 32-byte `_streamKey` plus the first 14 bytes of
+     the session ID, both ways, cipher suite 5. A tvOS host also runs gPTP
+     over UDPv6; whether that's required is open.
+- **The obstacle: the listener's port.** The iPhone advertises `_rdlink._tcp`
+  on AWDL only when asked. It takes either a BLE Nearby Action advert (action
+  type `0x32`, from a device its IRK identifies) or the event `_rdNeedsAWDL
+  {_i, _ena: true}` over a companion link, which a tvOS host sends with AWDL
+  excluded, so over shared Wi-Fi. A host with AWDL alone can do neither.
+- **A port scan didn't find it (2026-11-19, two tries).** During Phase A,
+  with the iPhone's AWDL up, Koala tried every TCP port from 49152 to 65535 on
+  its link-local address over Warlock. It used 1024 probes at once × 1 s and
+  2048 × 0.6 s. **Nothing answered, not even with a refusal**: every probe
+  timed out.
+  - Either iOS drops connections on its restricted AWDL interface unless the
+    socket opted in, or the burst overwhelmed Warlock's AWDL transmit path.
+  - TCP from Windows to an Apple listener over Warlock hasn't been checked on
+    its own yet.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=3`.

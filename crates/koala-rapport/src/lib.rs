@@ -44,7 +44,7 @@ mod tests {
     use tokio::net::TcpStream;
 
     use super::*;
-    use crate::auth::{Method, PASSWORD_TYPE_PIN, pair_setup, pair_verify, serve_pairing};
+    use crate::auth::{AUTH_TYPE_PAIRED, Method, PASSWORD_TYPE_PIN, pair_setup, pair_verify, serve_pairing};
     use crate::message::dict;
 
     /// Answers one `_ping` request.
@@ -104,7 +104,7 @@ mod tests {
 
         let known = |id: &[u8]| (id == server_peer.id.as_slice()).then_some(server_peer.public_key);
         let mut c = Connection::new(TcpStream::connect(address).await.unwrap());
-        pair_verify(&mut c, client_id, known).await.unwrap();
+        pair_verify(&mut c, client_id, known, AUTH_TYPE_PAIRED).await.unwrap();
         ping(&mut c, 41).await;
         server.await.unwrap();
     }
