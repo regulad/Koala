@@ -20,7 +20,8 @@ koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
 # under the AGPL), from a Warlock checkout beside this one. Not from git yet:
 # Cargo fetches a git dependency's submodules recursively, and devourer pins
 # a reference submodule (reference/rtl8852cu) to a commit that no longer
-# exists (PLAN.md).
+# exists. regulad/Koala#2 tracks it (through regulad/Warlock#14 and
+# OpenIPC/devourer#586).
 warlock-client = { path = "../Warlock/crates/warlock-client", version = "0.2.0" }
 
 aes = "0.9.4"

@@ -4,8 +4,8 @@
 #
 # Not the Rust workspace, yet. Dependabot resolves it on its own, without
 # the Warlock checkout beside Koala that warlock-client comes from
-# (Cargo.toml), so its Cargo updates would fail. Its security alerts read
-# Cargo.lock and still cover the Rust dependencies (settings.yml).
+# (Cargo.toml), so its Cargo updates would fail (#2). Its security alerts
+# read Cargo.lock and still cover the Rust dependencies (settings.yml).
 #
 # An update waits until its release is two weeks old (`cooldown`), as
 # PLAN.md asks of every new dependency. Security updates don't wait: the
