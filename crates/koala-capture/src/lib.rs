@@ -10,6 +10,7 @@
 //!   codec.
 
 pub mod archive;
+pub mod audio;
 pub mod avc;
 pub mod rtcp;
 pub mod session;

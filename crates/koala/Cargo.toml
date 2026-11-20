@@ -12,6 +12,9 @@ getrandom.workspace = true
 koala-capture.workspace = true
 koala-pairing.workspace = true
 koala-rapport.workspace = true
+opus.workspace = true
+# Not used directly: pins opus's libopus build (PLAN.md, avc-media).
+opusic-sys.workspace = true
 qrcode.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
 warlock-client.workspace = true
