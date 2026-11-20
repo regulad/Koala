@@ -19,6 +19,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "aes"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc0fc36d7440d015b45468ba08a21e80e056ebbd014c611c6298bb7503e04bd1"
+dependencies = [
+ "cipher",
+ "cpubits",
+ "cpufeatures",
+]
+
+[[package]]
 name = "apple-opack"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -156,6 +167,15 @@ dependencies = [
  "getrandom",
  "hybrid-array",
  "rand_core",
+]
+
+[[package]]
+name = "ctr"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "baaca1c4b237092596f64d571e9db6ce4109c4ef9742e27590f1709594461f21"
+dependencies = [
+ "cipher",
 ]
 
 [[package]]
@@ -424,10 +444,14 @@ dependencies = [
 name = "koala-capture"
 version = "0.0.0"
 dependencies = [
+ "aes",
  "apple-opack",
+ "ctr",
+ "hmac",
  "koala-pairing",
  "miniz_oxide",
  "plist",
+ "sha1",
  "thiserror",
  "x25519-dalek",
 ]
@@ -653,6 +677,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures",
+ "digest",
+]
+
+[[package]]
 name = "sha2"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -851,7 +886,7 @@ dependencies = [
 
 [[package]]
 name = "warlock-client"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bytes",
  "http",

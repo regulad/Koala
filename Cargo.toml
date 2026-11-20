@@ -23,14 +23,18 @@ koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
 # exists (PLAN.md).
 warlock-client = { path = "../Warlock/crates/warlock-client", version = "0.2.0" }
 
+aes = "0.9.4"
 apple-opack = "1.1.0"
 chacha20poly1305 = "0.11.0"
+ctr = "0.10.1"
 ed25519-dalek = "3.0.0"
 getrandom = "0.4.3"
 hkdf = "0.13.0"
+hmac = "0.13.0"
 miniz_oxide = "0.9.1"
 plist = "1.10.3"
 qrcode = { version = "0.14.1", default-features = false }
+sha1 = "0.11.0"
 sha2 = "0.11.1"
 srp = "0.7.0-rc.3"
 thiserror = "2.0.21"

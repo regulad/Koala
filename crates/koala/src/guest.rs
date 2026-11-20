@@ -287,6 +287,10 @@ async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
                     println!("the iPhone's RDLink listener: port {port}");
                     let mut listener = iphone;
                     listener.set_port(port);
+                    // Its microphone streams over Low-Latency Wi-Fi only in a
+                    // realtime group, which the host starts: one is held for
+                    // the session (`docs/guest-pairing.md`, trials 20–21).
+                    let _realtime = RealtimeGroup::hold(&warlock, &mac).await;
                     crate::capture::run(listener, local, identity, peer, info).await;
                     return;
                 }
@@ -302,6 +306,42 @@ async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     println!("no RDLink listener from the iPhone in {} s", PHASE_B_WAIT.as_secs());
+}
+
+/// A Warlock realtime lock on the iPhone (`POST /v1/realtime`), held until
+/// dropped. Its stream is read, as the contract asks, and its changes
+/// logged: `joined` is the iPhone saying it's in the group.
+struct RealtimeGroup(tokio::task::JoinHandle<()>);
+
+impl RealtimeGroup {
+    /// `None` if Warlock refuses, as it does while another program holds a
+    /// group with another peer: the session then runs without LLW.
+    async fn hold(warlock: &Client, mac: &str) -> Option<Self> {
+        match warlock.realtime(mac, "Koala microphone").await {
+            Ok(mut lines) => Some(Self(tokio::spawn(async move {
+                let mut last = String::new();
+                while let Some(Ok(state)) = lines.next_value().await {
+                    let state = state.to_string();
+                    if state != last {
+                        println!("Warlock realtime group: {state}");
+                        last = state;
+                    }
+                }
+            }))),
+            Err(e) => {
+                println!("Warlock refused a realtime group with {mac}: {e}");
+                None
+            }
+        }
+    }
+}
+
+impl Drop for RealtimeGroup {
+    fn drop(&mut self) {
+        // Ending the task closes the lock's connection: Warlock asks the
+        // iPhone to stop.
+        self.0.abort();
+    }
 }
 
 /// The MAC address in an EUI-64 link-local address, as Warlock names peers.

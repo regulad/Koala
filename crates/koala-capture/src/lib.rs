@@ -11,5 +11,7 @@
 
 pub mod archive;
 pub mod avc;
+pub mod rtcp;
 pub mod session;
+pub mod srtp;
 pub mod streams;

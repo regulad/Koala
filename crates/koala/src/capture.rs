@@ -8,15 +8,17 @@
 //! has the answer; the microphone gets a UDP path, where its media arrives.
 
 use std::collections::BTreeSet;
-use std::net::SocketAddrV6;
-use std::time::Duration;
+use std::net::{SocketAddr, SocketAddrV6};
+use std::time::{Duration, Instant};
 
 use apple_opack::Value;
 use koala_capture::avc::{AnswerSettings, Offer, answer, ntp_now};
+use koala_capture::rtcp::{self, ReceiverStats};
 use koala_capture::session::{
     ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, control, message, session_start,
     start_stream, stream as name, stream_activated, stream_announce,
 };
+use koala_capture::srtp::{self, Rollover};
 use koala_capture::streams::{
     STREAM_ID, STREAM_KEY, STREAM_START, STREAM_TYPE, TYPE_RAPPORT, TYPE_UDP, rapport_stream_answer,
     rapport_stream_keys, udp_stream_answer,
@@ -53,6 +55,12 @@ const OS_BUILD: &str = "26A434";
 const PAYLOADS: [u8; 2] = [101, 119];
 /// How long the iPhone has to connect a Rapport stream once answered.
 const STREAM_CONNECT: Duration = Duration::from_secs(5);
+/// How often Koala sends RTCP: about as often as the iPhone does (trial 21).
+/// The iPhone ends the session after 12 s without any.
+const RTCP_INTERVAL: Duration = Duration::from_secs(1);
+/// The microphone's RTP clock: its timestamps advance 480 per 10 ms packet
+/// (trial 21).
+const MIC_CLOCK_RATE: u32 = 48_000;
 
 /// The session on the iPhone's RDLink listener at `iphone`. `info` is
 /// Koala's `_systemInfo` content for `com.apple.continuitycapture`.
@@ -82,9 +90,13 @@ pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
     crate::random(&mut session_id);
     session_id[6] = (session_id[6] & 0x0f) | 0x40;
     session_id[8] = (session_id[8] & 0x3f) | 0x80;
+    // Koala's SSRC, for the AVC answer and its RTCP alike.
+    let mut ssrc = [0u8; 4];
+    crate::random(&mut ssrc);
     let mut session = Session {
         connection,
         local,
+        ssrc: u32::from_be_bytes(ssrc),
         configuration: Configuration::microphone(session_id, 1),
         started: false,
         activated: BTreeSet::new(),
@@ -97,6 +109,8 @@ pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
 struct Session {
     connection: Connection<TcpStream>,
     local: Local,
+    /// Koala's SSRC in the media session.
+    ssrc: u32,
     configuration: Configuration,
     started: bool,
     /// Streams whose connection or path is up.
@@ -179,7 +193,7 @@ impl Session {
                         if stream == name::COMMAND {
                             self.start_command = Some(start_tx);
                         }
-                        tokio::spawn(rapport_stream(stream.clone(), tcp, psk, start_rx));
+                        tokio::spawn(rapport_stream(stream.clone(), tcp, psk, start_rx, self.ssrc));
                         self.activated(&stream).await?;
                     }
                     Ok(Err(e)) => println!("capture: stream {stream}: accepting failed: {e}"),
@@ -196,7 +210,8 @@ impl Session {
                     "capture: stream {stream}: UDP, port {port}; the iPhone's end {:?}",
                     content.get("_streamAddr")
                 );
-                tokio::spawn(udp_stream(stream.clone(), socket));
+                let keys = srtp::Context::for_stream(&key, &self.configuration.session_id);
+                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -236,7 +251,7 @@ impl Session {
 /// frame with the stream's pre-shared key. Logs what it carries, answers
 /// requests empty and (on Control) the AVC offer, and sends `start` (the
 /// Command stream's StartStream) when it's given.
-async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: oneshot::Receiver<Value>) {
+async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: oneshot::Receiver<Value>, ssrc: u32) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
     // Only Command gets a StartStream (xid 1); the others' senders are dropped.
@@ -256,7 +271,7 @@ async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: on
         let out = match message.kind {
             MessageType::Request => message.reply(dict(vec![])),
             MessageType::Event if stream == name::CONTROL && message.id.as_deref() == Some(STREAM_EVENT) => {
-                let Some(content) = avc_answer(&message.content) else { continue };
+                let Some(content) = avc_answer(&message.content, ssrc) else { continue };
                 xid += 1;
                 Message::event(STREAM_EVENT, xid, content)
             }
@@ -271,7 +286,7 @@ async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: on
 /// Koala's answer to the iPhone's AVConference offer (Control selector 2,
 /// `[entity, offer]`), as the stream event's content: selector 2 again, with
 /// `[entity, answer]`. `None` for any other Control event.
-fn avc_answer(content: &Value) -> Option<Value> {
+fn avc_answer(content: &Value, ssrc: u32) -> Option<Value> {
     if content.get(SELECTOR).and_then(Value::as_u64) != Some(control::AVC_NEGOTIATION) {
         return None;
     }
@@ -296,15 +311,7 @@ fn avc_answer(content: &Value) -> Option<Value> {
         println!("capture: none of the payloads Koala answers with was offered");
         return None;
     };
-    let mut ssrc = [0u8; 4];
-    crate::random(&mut ssrc);
-    let settings = AnswerSettings {
-        payload,
-        ssrc: u32::from_be_bytes(ssrc),
-        ntp_time: ntp_now(),
-        device_type: MODEL,
-        os_version: OS_BUILD,
-    };
+    let settings = AnswerSettings { payload, ssrc, ntp_time: ntp_now(), device_type: MODEL, os_version: OS_BUILD };
     let bytes = answer(&offer, &settings).map_err(|e| println!("capture: the AVC answer: {e}")).ok()?;
     println!("capture: AVC answer: payload {payload}, Koala's SSRC {:#010x}, {} bytes", settings.ssrc, bytes.len());
     Some(dict(vec![
@@ -313,21 +320,95 @@ fn avc_answer(content: &Value) -> Option<Value> {
     ]))
 }
 
-/// The microphone's UDP path: logs what arrives (SRTP, once the iPhone
-/// streams).
-async fn udp_stream(stream: String, socket: UdpSocket) {
+/// The microphone's UDP path. Verifies and decrypts the iPhone's SRTP and
+/// keeps receiver statistics on it, reads its SRTCP sender reports, and
+/// answers once a second with an SRTCP receiver report, without which the
+/// iPhone ends the session at 12 s. RTP and RTCP share the port, both ways.
+/// The reports leave from this socket, bound to Warlock's link-local
+/// address: left to choose, Windows sent to the iPhone's `llw0` address
+/// from another adapter's ULA (trial 21).
+async fn udp_stream(stream: String, socket: UdpSocket, keys: srtp::Context, ssrc: u32) {
     let mut buffer = vec![0u8; 2048];
-    let mut packets = 0u64;
+    let (mut packets, mut refused, mut reports_in) = (0u64, 0u64, 0u64);
+    let mut reports_out = 0u32;
+    let mut peer: Option<SocketAddr> = None;
+    let mut stats: Option<ReceiverStats> = None;
+    let mut rollover = Rollover::default();
+    let mut tick = tokio::time::interval(RTCP_INTERVAL);
+    tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
-        match socket.recv_from(&mut buffer).await {
-            Ok((len, from)) => {
+        tokio::select! {
+            received = socket.recv_from(&mut buffer) => {
+                let (len, from) = match received {
+                    Ok(r) => r,
+                    Err(e) => return println!("capture: stream {stream}: {e}"),
+                };
+                let data = &buffer[..len];
+                peer = Some(from);
+                if srtp::is_rtcp(data) {
+                    match keys.unprotect_rtcp(data) {
+                        Ok((rtcp, index)) => {
+                            reports_in += 1;
+                            for (sender, ntp) in rtcp::sender_reports(&rtcp) {
+                                if let Some(s) = stats.as_mut().filter(|s| s.ssrc == sender) {
+                                    s.sender_report(ntp, Instant::now());
+                                }
+                            }
+                            if reports_in <= 2 || reports_in.is_power_of_two() {
+                                println!("capture: stream {stream}: SRTCP {index} from {from}, {} bytes", rtcp.len());
+                            }
+                        }
+                        Err(e) => println!("capture: stream {stream}: SRTCP from {from} refused: {e}"),
+                    }
+                    continue;
+                }
                 packets += 1;
-                if packets <= 5 || packets.is_power_of_two() {
-                    let head: String = buffer[..len.min(16)].iter().map(|b| format!("{b:02x}")).collect();
-                    println!("capture: stream {stream}: packet {packets}, {len} bytes from {from}: {head}…");
+                if len < 12 {
+                    continue;
+                }
+                let seq = u16::from_be_bytes([data[2], data[3]]);
+                let timestamp = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
+                let source = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+                let roc = rollover.guess(seq);
+                match keys.unprotect_rtp(data, roc) {
+                    Ok(clear) => {
+                        rollover.update(seq, roc);
+                        let s = stats.get_or_insert_with(|| ReceiverStats::new(source, MIC_CLOCK_RATE, seq));
+                        if s.ssrc == source {
+                            s.received(seq, timestamp, Instant::now());
+                        }
+                        if packets <= 3 || packets.is_power_of_two() {
+                            println!(
+                                "capture: stream {stream}: packet {packets} from {from}: SSRC {source:#010x}, seq {seq}, \
+                                 {} bytes decrypted",
+                                clear.len()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        refused += 1;
+                        if refused <= 3 || refused.is_power_of_two() {
+                            println!("capture: stream {stream}: packet {packets} from {from} refused ({refused} so far): {e}");
+                        }
+                    }
                 }
             }
-            Err(e) => return println!("capture: stream {stream}: {e}"),
+            _ = tick.tick() => {
+                let (Some(to), Some(s)) = (peer, stats.as_mut()) else { continue };
+                reports_out += 1;
+                let report = rtcp::receiver_report(ssrc, &[s.report_block(Instant::now())]);
+                let packet = keys.protect_rtcp(&report, reports_out);
+                if let Err(e) = socket.send_to(&packet, to).await {
+                    println!("capture: stream {stream}: sending SRTCP to {to}: {e}");
+                    continue;
+                }
+                if reports_out <= 3 || reports_out.is_power_of_two() {
+                    println!(
+                        "capture: stream {stream}: SRTCP {reports_out} to {to}: receiver report, {} packets received",
+                        s.packets()
+                    );
+                }
+            }
         }
     }
 }
