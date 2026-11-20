@@ -62,7 +62,11 @@ Everything else is wasted if the iPhone won't accept a host that isn't a real Ap
 - **Audio out:** a USB/IP server in Koala, emulating a UAC2 device with one mono input per microphone, named from `koala-capture`'s mic map. Its asynchronous IN endpoints let the device follow the iPhone's clock. Prior art: [network-audio/usbip-audio](https://github.com/network-audio/usbip-audio) (MIT). *Started 2026-11-20:*
   - the mic map (`crates/koala-capture/data/mic-maps.json`, from every iOS 27 iPhone's device tree by `tools/mic_maps.py`);
   - one output per microphone (`crates/koala/src/mic.rs`), which are WAV files for now.
-- **UI:** deferred. Until then, a CLI that shows the QR in the terminal.
+- **UI: `koala-tray`, WinUI 3 through windows-rs's [Reactor](https://github.com/microsoft/windows-rs/tree/master/crates/libs/reactor) (Parker, 2026-11-20).** A notification-area icon whose menu shows the status ("Warlock service unavailable", "Disconnected", "Connecting to …", "Connected to …"), Connect and About. Connect shows the QR code, 4 inches square on the screen (from the primary monitor's reported size), in the work area's corner nearest the notification area, until the iPhone is connected. About shows the licence and every dependency's (`tools/third_party_notices.py`, kept current by a test). `koala` stays the console tool for trials.
+  - **Reactor is a preview.** It comes from windows-rs's master at a commit at least two weeks old (its last release, 0.100.0, has no notification icon); its API changes daily.
+  - **Its limits, accepted for now:** its menu items are plain text, so the status row is the menu's size and About has no icon; the menu opens on a right-click only. The QR window's place, staying on top and staying out of the taskbar are set on its native window, which Reactor hands over.
+  - **It needs the Windows App Runtime (2.6) installed**, Microsoft's, which Koala uses but doesn't ship. Shipping it (`windows-reactor-setup`, self-contained) needs its licence checked first.
+  - Tried first and dropped: Win32 menus and GDI, which looked dated and wouldn't follow dark mode (only undocumented uxtheme calls do, and they didn't take on build 26300).
 
 Milestones (exit criteria):
 

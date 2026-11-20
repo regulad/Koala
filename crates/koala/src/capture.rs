@@ -30,7 +30,9 @@ use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::oneshot;
+use tokio::task::JoinSet;
 
+use crate::guest::{Event, Report};
 use crate::mic::{Microphone, Model};
 
 /// This end: the Warlock adapter's link-local address (with its interface
@@ -41,8 +43,6 @@ pub struct Local {
     pub mac: [u8; 6],
 }
 
-/// How long one capture session is followed.
-const SESSION_TIME: Duration = Duration::from_secs(120);
 /// The ProductType Koala presents in the capture session, and its OS build
 /// for AVConference's call info: a real pair, an M1 MacBook Air on macOS
 /// 27.0.1. A Mac model (anything containing "Mac") makes the session's device
@@ -64,9 +64,19 @@ const RTCP_INTERVAL: Duration = Duration::from_secs(1);
 /// (trial 21).
 const MIC_CLOCK_RATE: u32 = 48_000;
 
-/// The session on the iPhone's RDLink listener at `iphone`. `info` is
-/// Koala's `_systemInfo` content for `com.apple.continuitycapture`.
-pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: Peer, info: Value) {
+/// The session on the iPhone's RDLink listener at `iphone`, followed for
+/// `limit` or until it ends. `info` is Koala's `_systemInfo` content for
+/// `com.apple.continuitycapture`. Dropping the future ends the session's
+/// streams too.
+pub async fn run(
+    iphone: SocketAddrV6,
+    local: Local,
+    identity: Identity,
+    peer: Peer,
+    info: Value,
+    limit: Option<Duration>,
+    report: Report,
+) {
     let port = iphone.port();
     let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(iphone)).await else {
         return println!("capture: no connection to port {port}");
@@ -105,9 +115,16 @@ pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
         activated: BTreeSet::new(),
         start_command: None,
         udp_stop: Vec::new(),
+        streams: JoinSet::new(),
+        report,
         xid: 100,
     };
-    let _ = tokio::time::timeout(SESSION_TIME, session.follow()).await;
+    match limit {
+        Some(limit) => {
+            let _ = tokio::time::timeout(limit, session.follow()).await;
+        }
+        None => session.follow().await,
+    }
 }
 
 struct Session {
@@ -125,6 +142,9 @@ struct Session {
     start_command: Option<oneshot::Sender<Value>>,
     /// Held for the UDP paths' tasks: dropped with the session, they stop.
     udp_stop: Vec<oneshot::Sender<()>>,
+    /// The streams' tasks, ended with the session.
+    streams: JoinSet<()>,
+    report: Report,
     xid: u64,
 }
 
@@ -201,7 +221,14 @@ impl Session {
                         if stream == name::COMMAND {
                             self.start_command = Some(start_tx);
                         }
-                        tokio::spawn(rapport_stream(stream.clone(), tcp, psk, start_rx, self.ssrc, self.model.clone()));
+                        self.streams.spawn(rapport_stream(
+                            stream.clone(),
+                            tcp,
+                            psk,
+                            start_rx,
+                            self.ssrc,
+                            self.model.clone(),
+                        ));
                         self.activated(&stream).await?;
                     }
                     Ok(Err(e)) => println!("capture: stream {stream}: accepting failed: {e}"),
@@ -221,7 +248,8 @@ impl Session {
                 let keys = srtp::Context::for_stream(&key, &self.configuration.session_id);
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
-                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, self.model.clone(), stop_rx));
+                let (model, report) = (self.model.clone(), self.report.clone());
+                self.streams.spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, model, report, stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -347,6 +375,7 @@ fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
 /// keeps receiver statistics on it, reads its SRTCP sender reports, and
 /// answers once a second with an SRTCP receiver report, without which the
 /// iPhone ends the session at 12 s. RTP and RTCP share the port, both ways.
+/// The first audio decoded is reported as [`Event::Streaming`].
 /// The reports leave from this socket, bound to Warlock's link-local
 /// address: left to choose, Windows sent to the iPhone's `llw0` address
 /// from another adapter's ULA (trial 21).
@@ -356,6 +385,7 @@ async fn udp_stream(
     keys: srtp::Context,
     ssrc: u32,
     model: Model,
+    report: Report,
     mut stop: oneshot::Receiver<()>,
 ) {
     let mut buffer = vec![0u8; 2048];
@@ -412,7 +442,11 @@ async fn udp_stream(
                         if s.ssrc == source {
                             s.received(seq, timestamp, Instant::now());
                             let header = srtp::rtp_header_len(&clear).unwrap_or(clear.len());
+                            let before = mic.decoded;
                             mic.packet(seq, &clear[header..]);
+                            if before == 0 && mic.decoded == 1 {
+                                report.send(Event::Streaming);
+                            }
                         }
                         if packets <= 3 || packets.is_power_of_two() {
                             println!(

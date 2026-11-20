@@ -1,0 +1,222 @@
+//! `koala-tray`: Koala in the notification area, in WinUI 3 through
+//! windows-rs's Reactor (PLAN.md, "UI").
+//!
+//! The icon's menu (right-click; Reactor gives a left click to
+//! `on_activate`, and can't open the menu from it):
+//! - the status: "Warlock service unavailable", "Disconnected",
+//!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
+//! - Connect, greyed out unless disconnected;
+//! - a separator, then About, which opens About Koala ([`about`]).
+//!
+//! Reactor's menu items are plain text for now, so the status row is the
+//! menu's own size and About has no icon (Parker's choice, 2026-11-20:
+//! Reactor, with its limits).
+//!
+//! Connect starts a guest run ([`crate::guest`]) and shows its QR code
+//! ([`qr`]) until the iPhone is connected. Reactor runs the UI on this
+//! thread; the run and the polling of Warlock run on Tokio
+//! ([`controller`]), whose views come back through a [`bridge`].
+
+mod about;
+mod bridge;
+mod controller;
+pub mod display;
+mod glyph;
+mod qr;
+mod win;
+
+use std::path::PathBuf;
+
+use tokio::sync::mpsc::{UnboundedSender, unbounded_channel};
+use windows_reactor::*;
+use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::System::Threading::CreateMutexW;
+use windows_sys::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
+
+pub use controller::{Command, Qr, Status, View};
+use win::{system_dark, wide};
+
+/// The icon's sizes: Windows picks the one for the taskbar's scale.
+const ICON_SIZES: [i32; 9] = [16, 20, 24, 28, 32, 36, 40, 48, 64];
+
+/// Real pixels everywhere, each monitor at its own scale. First thing in
+/// the process: it can be set only once, and coordinates read before it
+/// are scaled.
+pub fn dpi_aware() {
+    unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+}
+
+/// Runs the tray until Windows ends the session. Returns early if another
+/// copy is running.
+pub fn run() -> Result<(), String> {
+    let name = wide(r"Local\Koala.Tray");
+    let _single = unsafe { CreateMutexW(std::ptr::null(), 0, name.as_ptr()) };
+    if unsafe { GetLastError() } == 183 {
+        // ERROR_ALREADY_EXISTS
+        return Err("Koala is already running".into());
+    }
+    App::run_application::<Tray>(()).map_err(|e| e.to_string())
+}
+
+#[derive(Clone)]
+enum Message {
+    /// The controller's latest view.
+    View(View),
+    /// A menu choice, by key.
+    Menu(Key),
+    /// The QR window closed.
+    QrClosed,
+    TryAgain,
+}
+
+struct Tray {
+    view: View,
+    commands: UnboundedSender<Command>,
+    _bridge: bridge::Bridge,
+    _runtime: tokio::runtime::Runtime,
+}
+
+impl Application for Tray {
+    type Input = ();
+    type Message = Message;
+
+    fn create(_: &(), context: &ApplicationContext<Self>) -> Self {
+        let runtime = tokio::runtime::Runtime::new().expect("a Tokio runtime");
+        let sender = context.sender();
+        let bridge = bridge::Bridge::new(move |view| {
+            let _ = sender.send(Message::View(view));
+        })
+        .expect("the tray's message window");
+        let poster = bridge.poster();
+        let (commands, receiver) = unbounded_channel();
+        match std::env::var("KOALA_TRAY_PREVIEW") {
+            Ok(what) => preview(&what, poster, context),
+            Err(_) => {
+                runtime.spawn(controller::run(receiver, move |view| poster.post(view.clone())));
+            }
+        }
+        Self { view: View::default(), commands, _bridge: bridge, _runtime: runtime }
+    }
+
+    fn update(&mut self, message: Message, context: &ApplicationContext<Self>) {
+        match message {
+            Message::View(view) => {
+                let opening = self.view.qr == Qr::Hidden && view.qr != Qr::Hidden;
+                self.view = view;
+                if opening {
+                    context.show_window("qr");
+                }
+            }
+            Message::Menu(key) => match key.as_str() {
+                Some("connect") => {
+                    let _ = self.commands.send(Command::Connect);
+                    if self.view.qr != Qr::Hidden {
+                        context.show_window("qr");
+                    }
+                }
+                Some("about") => context.show_window("about"),
+                _ => {}
+            },
+            // Closed while still trying: the user gave up.
+            Message::QrClosed => {
+                if self.view.qr != Qr::Hidden {
+                    let _ = self.commands.send(Command::Cancel);
+                }
+            }
+            Message::TryAgain => {
+                let _ = self.commands.send(Command::Connect);
+            }
+        }
+    }
+
+    fn view(&self, _: &(), context: &ApplicationViewContext<Self>) -> ApplicationView {
+        let status = &self.view.status;
+        let connect = if status.can_connect() {
+            MenuItem::item("connect", "Connect")
+        } else {
+            MenuItem::disabled("connect", "Connect")
+        };
+        let menu = Menu::new(
+            [
+                MenuItem::disabled("status", status.heading()),
+                connect,
+                MenuItem::separator("separator"),
+                MenuItem::item("about", "About"),
+            ],
+            context.callback(Message::Menu),
+        );
+        let qr = qr::Input {
+            qr: self.view.qr.clone(),
+            status: status.clone(),
+            on_closed: context.message(Message::QrClosed),
+            on_try_again: context.message(Message::TryAgain),
+        };
+        ApplicationView::new()
+            .window::<qr::QrWindow>("qr", qr)
+            .window::<about::AboutWindow>("about", about::Input { warlock: self.view.warlock.clone() })
+            .notify_icon(
+                "tray",
+                NotifyIcon::new(icon(matches!(status, Status::Connected(_))))
+                    .tooltip(format!("Koala: {}", status.heading()))
+                    .menu(menu),
+            )
+    }
+}
+
+/// The tray icon's file: the microphone, white on a dark taskbar and black
+/// on a light one, dimmed unless connected. Made the first time it's
+/// needed, under `%LOCALAPPDATA%\Koala`.
+fn icon(connected: bool) -> PathBuf {
+    let dir = std::env::var_os("LOCALAPPDATA").map_or_else(std::env::temp_dir, PathBuf::from).join("Koala");
+    let dark = system_dark();
+    let path = dir.join(format!(
+        "tray-1-{}-{}.ico",
+        if dark { "white" } else { "black" },
+        if connected { "on" } else { "off" }
+    ));
+    if !path.exists() {
+        let color = if dark { (255, 255, 255) } else { (0, 0, 0) };
+        let opacity = if connected { 255 } else { 128 };
+        let _ = std::fs::create_dir_all(&dir);
+        let _ = std::fs::write(&path, glyph::ico(glyph::MICROPHONE, &ICON_SIZES, color, opacity));
+    }
+    path
+}
+
+/// `KOALA_TRAY_PREVIEW=menu|qr|about`: the UI alone, with scripted views in
+/// place of the controller's, for looking at (screenshots, layout checks).
+/// - `menu`: disconnected, and the menu opens as a right-click on the icon
+///   would.
+/// - `qr`: a sample code; 8 s later the view hides it, as a connection does,
+///   and the window should close itself.
+/// - `about`: About Koala.
+fn preview(what: &str, poster: bridge::Poster, context: &ApplicationContext<Tray>) {
+    let disconnected = View { status: Status::Disconnected, qr: Qr::Hidden, warlock: Some("0.2.2".into()) };
+    match what {
+        "menu" => {
+            poster.post(disconnected);
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(2500));
+                display::open_icon_menu();
+            });
+        }
+        "qr" => {
+            let url = format!(
+                "continuitycamera://connect?_pubID={}&_pinC={}&_pi={}&model=AppleTV14,1&_rdsr=1",
+                crate::uuid(),
+                crate::uuid(),
+                crate::uuid()
+            );
+            poster.post(View { qr: Qr::Code(url), ..disconnected.clone() });
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_secs(8));
+                poster.post(disconnected);
+            });
+        }
+        "about" => {
+            poster.post(disconnected);
+            context.show_window("about");
+        }
+        _ => {}
+    }
+}

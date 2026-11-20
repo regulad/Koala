@@ -1,4 +1,5 @@
-//! `koala guest`: play an Apple TV offering guest pairing, for K2.
+//! Playing an Apple TV offering guest pairing: `koala guest`, and the tray's
+//! Connect.
 //!
 //! Everything here follows `docs/guest-pairing.md`, "What Koala needs":
 //! the QR code, the `_rdlink._tcp` advert with the TXT the iPhone checks, and
@@ -15,6 +16,8 @@ use koala_rapport::{Connection, FrameType, Message, MessageType, RapportError};
 use qrcode::render::unicode;
 use qrcode::{EcLevel, QrCode};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::mpsc::UnboundedSender;
+use tokio::task::JoinSet;
 use warlock_client::{Client, PIPE};
 
 use crate::ble::Advert;
@@ -43,10 +46,57 @@ const GUEST_PAIRING_SERVICE: &str = "com.apple.ddui.guestpairing";
 const CAPTURE_SERVICE: &str = "com.apple.continuitycapture";
 /// How long Phase B waits for the iPhone's RDLink listener to show up.
 const PHASE_B_WAIT: Duration = Duration::from_secs(90);
+/// "Until cancelled", as a wait: a century.
+const FOREVER: Duration = Duration::from_secs(100 * 365 * 24 * 3600);
 
-/// Runs for `seconds`, then withdraws the advert and returns.
-pub async fn run(seconds: u64) -> Result<(), String> {
-    let run_for = Duration::from_secs(seconds);
+/// What a run reports as it goes, for the tray.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Event {
+    /// The QR code to show: its URL.
+    Qr(String),
+    /// An iPhone paired: its name, from its pair-setup info.
+    Paired(Option<String>),
+    /// The microphone's audio is arriving.
+    Streaming,
+    /// The capture side is over: `None` when a session ended, or why there
+    /// was none.
+    Ended(Option<String>),
+}
+
+/// Where a run's [`Event`]s go, if anywhere.
+#[derive(Clone, Debug, Default)]
+pub struct Report(Option<UnboundedSender<Event>>);
+
+impl Report {
+    pub fn to(events: UnboundedSender<Event>) -> Self {
+        Self(Some(events))
+    }
+
+    pub fn send(&self, event: Event) {
+        if let Some(events) = &self.0 {
+            let _ = events.send(event);
+        }
+    }
+}
+
+/// How a run goes.
+#[derive(Clone, Debug)]
+pub struct Options {
+    /// How long to wait for an iPhone; `None` until the run is dropped.
+    pub wait: Option<Duration>,
+    /// How long to follow a capture session; `None` until it ends.
+    pub session: Option<Duration>,
+    /// In a terminal: print the QR code (and open it in Photos), and stop
+    /// on Ctrl+C.
+    pub terminal: bool,
+    pub report: Report,
+}
+
+/// Waits for an iPhone for `options.wait`, then withdraws the advert and
+/// returns. Dropping the run ends everything it started, a capture session
+/// included.
+pub async fn run(options: Options) -> Result<(), String> {
+    let run_for = options.wait.unwrap_or(FOREVER);
     let warlock = Client::new(PIPE);
     let info = warlock.info().await.map_err(|e| format!("Warlock: {e}"))?;
     let adapter = info.adapter.ok_or("Warlock has no network adapter yet")?;
@@ -129,9 +179,14 @@ pub async fn run(seconds: u64) -> Result<(), String> {
     let url = format!(
         "continuitycamera://connect?_pubID={public_id}&_pinC={pin}&_pi={pairing_id}&model={MODEL}&_rdsr={START_REASON}"
     );
-    show_qr(&url)?;
+    if options.terminal {
+        show_qr(&url)?;
+    }
+    options.report.send(Event::Qr(url));
 
     let mut peers: Vec<Peer> = Vec::new();
+    // Phase B, once an iPhone is in session: ended with the run.
+    let mut phase_b = JoinSet::new();
     let end = tokio::time::Instant::now() + run_for;
     let deadline = tokio::time::sleep_until(end);
     tokio::pin!(deadline);
@@ -161,9 +216,9 @@ pub async fn run(seconds: u64) -> Result<(), String> {
                 let infos =
                     (system_info(GUEST_PAIRING_SERVICE, MODEL), system_info(CAPTURE_SERVICE, crate::capture::MODEL));
                 // The iPhone may keep this connection open: the run's end ends it too.
-                let conversation = converse(stream, from, &identity, setup, &mut peers, local, infos);
+                let conversation = converse(stream, from, &identity, setup, &mut peers, local, infos, &mut phase_b, &options);
                 if tokio::time::timeout_at(end, conversation).await.is_err() {
-                    println!("giving up after {seconds} s, in a conversation");
+                    println!("giving up after {} s, in a conversation", run_for.as_secs());
                     break;
                 }
             }
@@ -181,9 +236,9 @@ pub async fn run(seconds: u64) -> Result<(), String> {
             line = hold.next_value() => if line.is_none() {
                 return Err("Warlock closed the hold".into());
             },
-            _ = tokio::signal::ctrl_c() => break,
+            _ = tokio::signal::ctrl_c(), if options.terminal => break,
             _ = &mut deadline => {
-                println!("giving up after {seconds} s");
+                println!("giving up after {} s", run_for.as_secs());
                 break;
             }
         }
@@ -193,7 +248,8 @@ pub async fn run(seconds: u64) -> Result<(), String> {
 
 /// One connection: pairing, then whatever the peer sends, until it closes.
 /// Once the iPhone's `_systemInfo` is answered it is in its mic-only
-/// session, and [`phase_b`] starts alongside.
+/// session, and [`phase_b`] starts alongside, in `tasks`.
+#[allow(clippy::too_many_arguments)]
 async fn converse(
     stream: TcpStream,
     from: SocketAddr,
@@ -202,6 +258,8 @@ async fn converse(
     peers: &mut Vec<Peer>,
     local: Local,
     (guest_info, capture_info): (Value, Value),
+    tasks: &mut JoinSet<()>,
+    options: &Options,
 ) {
     let mut connection = Connection::new(stream).with_trace(format!("[{from}]"));
     let known = peers.len();
@@ -210,12 +268,18 @@ async fn converse(
     let mut phase_b_started = false;
     for peer in &peers[known..] {
         println!("PAIRED with {}", String::from_utf8_lossy(&peer.id));
-        if let Some(info) = &peer.info {
-            match apple_opack::unpack(info) {
-                Ok((value, _)) => println!("  its info: {value:?}"),
-                Err(_) => println!("  its info ({} bytes) isn't OPACK", info.len()),
-            }
+        let info = peer.info.as_deref().map(apple_opack::unpack);
+        match &info {
+            Some(Ok((value, _))) => println!("  its info: {value:?}"),
+            Some(Err(_)) => println!("  its info isn't OPACK"),
+            None => {}
         }
+        // Its name, as its owner set it: what the tray shows.
+        let name = match info {
+            Some(Ok((value, _))) => value.get("name").and_then(Value::as_str).map(str::to_owned),
+            _ => None,
+        };
+        options.report.send(Event::Paired(name));
     }
     match result {
         Ok(who) => {
@@ -246,7 +310,16 @@ async fn converse(
                         && let (SocketAddr::V6(address), Some(iphone)) = (from, iphone.clone())
                     {
                         phase_b_started = true;
-                        tokio::spawn(phase_b(address, local, identity.clone(), iphone, capture_info.clone()));
+                        let (session, report) = (options.session, options.report.clone());
+                        tasks.spawn(phase_b(
+                            address,
+                            local,
+                            identity.clone(),
+                            iphone,
+                            capture_info.clone(),
+                            session,
+                            report,
+                        ));
                     }
                 }
                 _ => {}
@@ -267,8 +340,16 @@ async fn converse(
 /// Phase B (`docs/guest-pairing.md`): with the BLE advert asking the iPhone
 /// onto AWDL already running (see [`run`]), watch for its `_rdlink._tcp`
 /// listener in its AWDL frames (Warlock's view of it), then start the
-/// capture session there.
-async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: Peer, info: Value) {
+/// capture session there, following it for `session` (or until it ends).
+async fn phase_b(
+    iphone: SocketAddrV6,
+    local: Local,
+    identity: Identity,
+    peer: Peer,
+    info: Value,
+    session: Option<Duration>,
+    report: Report,
+) {
     let warlock = Client::new(PIPE);
     let mac = mac_from_link_local(iphone.ip());
     let started = Instant::now();
@@ -291,7 +372,8 @@ async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
                     // realtime group, which the host starts: one is held for
                     // the session (`docs/guest-pairing.md`, trials 20–21).
                     let _realtime = RealtimeGroup::hold(&warlock, &mac).await;
-                    crate::capture::run(listener, local, identity, peer, info).await;
+                    crate::capture::run(listener, local, identity, peer, info, session, report.clone()).await;
+                    report.send(Event::Ended(None));
                     return;
                 }
             }
@@ -306,6 +388,7 @@ async fn phase_b(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
     println!("no RDLink listener from the iPhone in {} s", PHASE_B_WAIT.as_secs());
+    report.send(Event::Ended(Some(format!("the iPhone didn't open its capture side in {} s", PHASE_B_WAIT.as_secs()))));
 }
 
 /// A Warlock realtime lock on the iPhone (`POST /v1/realtime`), held until
