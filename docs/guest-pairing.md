@@ -707,6 +707,22 @@ a unicast MIF to the iPhone with data path state unicast options
   ("retro mode", `Entering retro mode … disabling infrastructure Wi-Fi`).
   The reason is that Warlock truthfully reports no infrastructure network.
 
+- **Trial 22: the session lasts.**
+  - **The setup:** Koala holds the realtime lock itself, verifies and
+    decrypts the SRTP, and sends an SRTCP receiver report every second.
+  - **The SRTP profile** had been settled offline on trial 21's packets:
+    AES_256_CM_HMAC_SHA1_80, master key `_streamKey`, master salt
+    `sessionID[..14]`. 200 of 200 tags verified, and none with any other
+    split or a 32-bit tag.
+  - **The session ran its full 2 minutes, Koala's own `SESSION_TIME`, with
+    no RTCP timeout.** Koala received over 8,000 packets, every one
+    authenticated, and sent 64+ reports.
+  - **The iPhone took the reports:** `AVCAudioStream
+    vcMediaStream:didReceiveRTCPPackets:` shows Koala's receiver report
+    about its SSRC, and the SDES.
+  - **Both directions of LLW therefore work through Warlock.** Warlock sent
+    one start UMI and, when the lock closed, one stop.
+
 Static analysis of the multi-peer case:
 - **Limits.**
   - An iPhone has one RTG: at most 8 peers, one RTGID (the larger of two
@@ -736,25 +752,24 @@ Static analysis of the multi-peer case:
      mode, and take a Warlock realtime lock on the iPhone (`POST
      /v1/realtime`) as it starts, for as long as it lasts;
   5. negotiate AVConference;
-  6. send RTCP to the iPhone's `llw0` address from a socket bound to
-     Warlock's link-local (Windows otherwise picks a ULA of another
-     adapter's).
+  6. send an SRTCP receiver report every second (AES_256_CM_HMAC_SHA1_80,
+     the same key) to the iPhone's microphone address, which is on its
+     `llw0`, from a socket bound to Warlock's link-local. Windows otherwise
+     picks a ULA of another adapter's.
 
 ## Open
 
-1. **The way back over LLW:** whether the iPhone takes Warlock's LLW
-   frames (QoS data, TID 7, RFC 1042) on `llw0`. Koala's RTCP is the test.
-2. **RTCP from the host** within 12 s (SRTCP, cipher suite 7), and how the
-   46-byte key splits into master key and salt. Now the session's limit
-   (trials 20–21).
-3. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
+1. **The audio itself:** decoding codec type 19 (4 channels, 48 kHz,
+   10 ms) from the decrypted RTP, and the clock messages on Command.
+2. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
    Signaling TLVs), or only follow it. Prior art: shairport-sync's NQPTP.
-4. **The audio itself:** SRTP decryption, codec type 19 (4 channels,
-   48 kHz, 10 ms), and the clock messages on Command.
-5. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
-6. **Which iOS process runs the scanner action.** The iOS file system wasn't
+   Two minutes ran without it (trial 22).
+3. **Sessions longer than Koala's 2-minute `SESSION_TIME`**, which trial 22
+   reached.
+4. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
+5. **Which iOS process runs the scanner action.** The iOS file system wasn't
    extracted, so entitlements weren't read. This doesn't affect Koala.
-7. **A possible oracle:** rapportd's `rdPairingServer` preference lets the
+6. **A possible oracle:** rapportd's `rdPairingServer` preference lets the
    pairing server run on a device that isn't a TV, a Mac included. Untried; the
    lab Mac is kept read-only.
 
@@ -764,7 +779,8 @@ Runs 8–17 settled what was open here before:
 - the capture protocol up to the streams;
 - the Sing path (avoided with `_rdsr=1`, trials 16–17);
 - the AVC answer (accepted, trial 17);
-- `llw0` to Koala: a realtime group started by Warlock (trials 20–21).
+- `llw0` to Koala: a realtime group started by Warlock (trials 20–21);
+- RTCP back over LLW, the SRTP profile and the key split (trial 22).
 
 ## Reproducing
 
