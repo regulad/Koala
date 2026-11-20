@@ -2,7 +2,8 @@
 //! AVC answer gets as payload type 101.
 //!
 //! One Opus frame per channel, the channels in order, each after its length
-//! (u16, big-endian). In 'call' mode there are 4 channels, at 48 kHz, one
+//! (u16, big-endian). In 'call' mode there are 4 channels, the iPhone's
+//! separate microphones (Parker, listening to trial 22), at 48 kHz, one
 //! 10 ms frame each (RTP timestamps advance 480 a packet). Every frame
 //! seen is CELT-only fullband 10 ms mono (TOC byte `0xf0`); a stream opens
 //! with Opus's 3-byte silence frame (`f0 ff fe`) on each channel. From

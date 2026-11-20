@@ -3,7 +3,7 @@
 //! For now, one command, the K2 trial:
 //!
 //! ```text
-//! koala guest
+//! koala guest [SECONDS] [--mic-wav PATH]
 //! ```
 //!
 //! It plays an Apple TV offering guest pairing (`docs/guest-pairing.md`):
@@ -17,16 +17,26 @@ mod capture;
 mod dnssd;
 mod guest;
 mod hci;
+mod mic;
 mod nearby;
 
 #[tokio::main]
 async fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    let mut args: Vec<String> = std::env::args().skip(1).collect();
+    // `--mic-wav PATH`: record the microphone's channels to a WAV.
+    if let Some(at) = args.iter().position(|a| a == "--mic-wav") {
+        let Some(path) = args.get(at + 1).cloned() else {
+            eprintln!("usage: koala guest [SECONDS] [--mic-wav PATH]");
+            std::process::exit(2);
+        };
+        let _ = mic::RECORD.set(path.into());
+        args.drain(at..at + 2);
+    }
     let result = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["guest"] => guest::run(600).await,
         ["guest", seconds] if seconds.parse::<u64>().is_ok() => guest::run(seconds.parse().unwrap()).await,
         _ => {
-            eprintln!("usage: koala guest [seconds to wait, default 600]");
+            eprintln!("usage: koala guest [SECONDS to wait, default 600] [--mic-wav PATH]");
             std::process::exit(2);
         }
     };

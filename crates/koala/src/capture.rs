@@ -101,6 +101,7 @@ pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
         started: false,
         activated: BTreeSet::new(),
         start_command: None,
+        udp_stop: Vec::new(),
         xid: 100,
     };
     let _ = tokio::time::timeout(SESSION_TIME, session.follow()).await;
@@ -117,6 +118,8 @@ struct Session {
     activated: BTreeSet<String>,
     /// Sends StartStream on the Command stream, once every stream is up.
     start_command: Option<oneshot::Sender<Value>>,
+    /// Held for the UDP paths' tasks: dropped with the session, they stop.
+    udp_stop: Vec<oneshot::Sender<()>>,
     xid: u64,
 }
 
@@ -211,7 +214,9 @@ impl Session {
                     content.get("_streamAddr")
                 );
                 let keys = srtp::Context::for_stream(&key, &self.configuration.session_id);
-                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc));
+                let (stop_tx, stop_rx) = oneshot::channel();
+                self.udp_stop.push(stop_tx);
+                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -327,17 +332,31 @@ fn avc_answer(content: &Value, ssrc: u32) -> Option<Value> {
 /// The reports leave from this socket, bound to Warlock's link-local
 /// address: left to choose, Windows sent to the iPhone's `llw0` address
 /// from another adapter's ULA (trial 21).
-async fn udp_stream(stream: String, socket: UdpSocket, keys: srtp::Context, ssrc: u32) {
+async fn udp_stream(
+    stream: String,
+    socket: UdpSocket,
+    keys: srtp::Context,
+    ssrc: u32,
+    mut stop: oneshot::Receiver<()>,
+) {
     let mut buffer = vec![0u8; 2048];
     let (mut packets, mut refused, mut reports_in) = (0u64, 0u64, 0u64);
     let mut reports_out = 0u32;
     let mut peer: Option<SocketAddr> = None;
     let mut stats: Option<ReceiverStats> = None;
     let mut rollover = Rollover::default();
+    let mut mic = match crate::mic::Microphone::new(crate::mic::Microphone::sink()) {
+        Ok(m) => m,
+        Err(e) => return println!("capture: stream {stream}: {e}"),
+    };
     let mut tick = tokio::time::interval(RTCP_INTERVAL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
+            // The session is over: so are its reports, and the recording.
+            _ = &mut stop => {
+                return println!("capture: stream {stream} closed: audio: {} decoded, {} concealed, {} errors", mic.decoded, mic.concealed, mic.errors);
+            }
             received = socket.recv_from(&mut buffer) => {
                 let (len, from) = match received {
                     Ok(r) => r,
@@ -376,6 +395,8 @@ async fn udp_stream(stream: String, socket: UdpSocket, keys: srtp::Context, ssrc
                         let s = stats.get_or_insert_with(|| ReceiverStats::new(source, MIC_CLOCK_RATE, seq));
                         if s.ssrc == source {
                             s.received(seq, timestamp, Instant::now());
+                            let header = srtp::rtp_header_len(&clear).unwrap_or(clear.len());
+                            mic.packet(seq, &clear[header..]);
                         }
                         if packets <= 3 || packets.is_power_of_two() {
                             println!(
@@ -404,8 +425,11 @@ async fn udp_stream(stream: String, socket: UdpSocket, keys: srtp::Context, ssrc
                 }
                 if reports_out <= 3 || reports_out.is_power_of_two() {
                     println!(
-                        "capture: stream {stream}: SRTCP {reports_out} to {to}: receiver report, {} packets received",
-                        s.packets()
+                        "capture: stream {stream}: SRTCP {reports_out} to {to}: receiver report, {} packets received; audio: {} decoded, {} concealed, {} errors",
+                        s.packets(),
+                        mic.decoded,
+                        mic.concealed,
+                        mic.errors
                     );
                 }
             }

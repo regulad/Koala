@@ -186,7 +186,7 @@ impl Context {
 }
 
 /// The length of an RTP packet's header: fixed part, CSRCs and extension.
-fn rtp_header_len(packet: &[u8]) -> Option<usize> {
+pub fn rtp_header_len(packet: &[u8]) -> Option<usize> {
     let first = *packet.first()?;
     if first >> 6 != 2 || packet.len() < 12 {
         return None;
