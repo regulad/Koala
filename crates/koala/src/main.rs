@@ -23,7 +23,8 @@ mod nearby;
 #[tokio::main]
 async fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
-    // `--mic-wav PATH`: record the microphone's channels to a WAV.
+    // `--mic-wav PATH`: record each of the iPhone's microphones to a WAV of
+    // its own, named from PATH (`trial.wav` gives `trial-back.wav`, …).
     if let Some(at) = args.iter().position(|a| a == "--mic-wav") {
         let Some(path) = args.get(at + 1).cloned() else {
             eprintln!("usage: koala guest [SECONDS] [--mic-wav PATH]");

@@ -6,8 +6,8 @@ Apple TVs let a guest's iPhone act as their microphone: the TV shows a QR
 code, the iPhone scans it, pairs, and sends its microphone's audio. Koala
 plays the Apple TV's part on Windows. It reaches the iPhone over Apple
 Wireless Direct Link (AWDL), which [Warlock](https://github.com/regulad/Warlock)
-gives Windows, and plays the audio into a virtual audio cable that other
-programs record from.
+gives Windows. Each of the iPhone's microphones becomes a Windows
+microphone of its own, which other programs record from.
 
 **Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
 and where each part stands.

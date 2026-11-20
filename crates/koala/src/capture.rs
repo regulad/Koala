@@ -31,6 +31,8 @@ use koala_rapport::{Connection, FrameType, Message, MessageType};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::oneshot;
 
+use crate::mic::{Microphone, Model};
+
 /// This end: the Warlock adapter's link-local address (with its interface
 /// as scope) and Warlock's AWDL MAC address.
 #[derive(Clone, Copy, Debug)]
@@ -97,6 +99,7 @@ pub async fn run(iphone: SocketAddrV6, local: Local, identity: Identity, peer: P
         connection,
         local,
         ssrc: u32::from_be_bytes(ssrc),
+        model: Model::default(),
         configuration: Configuration::microphone(session_id, 1),
         started: false,
         activated: BTreeSet::new(),
@@ -112,6 +115,8 @@ struct Session {
     local: Local,
     /// Koala's SSRC in the media session.
     ssrc: u32,
+    /// The iPhone's model, from its AVC offer on Control.
+    model: Model,
     configuration: Configuration,
     started: bool,
     /// Streams whose connection or path is up.
@@ -196,7 +201,7 @@ impl Session {
                         if stream == name::COMMAND {
                             self.start_command = Some(start_tx);
                         }
-                        tokio::spawn(rapport_stream(stream.clone(), tcp, psk, start_rx, self.ssrc));
+                        tokio::spawn(rapport_stream(stream.clone(), tcp, psk, start_rx, self.ssrc, self.model.clone()));
                         self.activated(&stream).await?;
                     }
                     Ok(Err(e)) => println!("capture: stream {stream}: accepting failed: {e}"),
@@ -216,7 +221,7 @@ impl Session {
                 let keys = srtp::Context::for_stream(&key, &self.configuration.session_id);
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
-                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, stop_rx));
+                tokio::spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, self.model.clone(), stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -254,9 +259,17 @@ impl Session {
 
 /// One Rapport stream: the iPhone's connection, encrypted from its first
 /// frame with the stream's pre-shared key. Logs what it carries, answers
-/// requests empty and (on Control) the AVC offer, and sends `start` (the
-/// Command stream's StartStream) when it's given.
-async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: oneshot::Receiver<Value>, ssrc: u32) {
+/// requests empty and (on Control) the AVC offer, keeping the iPhone's model
+/// from it, and sends `start` (the Command stream's StartStream) when it's
+/// given.
+async fn rapport_stream(
+    stream: String,
+    tcp: TcpStream,
+    psk: [u8; 32],
+    start: oneshot::Receiver<Value>,
+    ssrc: u32,
+    model: Model,
+) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
     // Only Command gets a StartStream (xid 1); the others' senders are dropped.
@@ -276,7 +289,7 @@ async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: on
         let out = match message.kind {
             MessageType::Request => message.reply(dict(vec![])),
             MessageType::Event if stream == name::CONTROL && message.id.as_deref() == Some(STREAM_EVENT) => {
-                let Some(content) = avc_answer(&message.content, ssrc) else { continue };
+                let Some(content) = avc_answer(&message.content, ssrc, &model) else { continue };
                 xid += 1;
                 Message::event(STREAM_EVENT, xid, content)
             }
@@ -290,8 +303,9 @@ async fn rapport_stream(stream: String, tcp: TcpStream, psk: [u8; 32], start: on
 
 /// Koala's answer to the iPhone's AVConference offer (Control selector 2,
 /// `[entity, offer]`), as the stream event's content: selector 2 again, with
-/// `[entity, answer]`. `None` for any other Control event.
-fn avc_answer(content: &Value, ssrc: u32) -> Option<Value> {
+/// `[entity, answer]`. `None` for any other Control event. Keeps the
+/// iPhone's model, which names its microphones.
+fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
     if content.get(SELECTOR).and_then(Value::as_u64) != Some(control::AVC_NEGOTIATION) {
         return None;
     }
@@ -307,10 +321,14 @@ fn avc_answer(content: &Value, ssrc: u32) -> Option<Value> {
     let offer = Offer::parse(data).map_err(|e| println!("capture: the AVC offer: {e}")).ok()?;
     let offered = offer.payloads();
     println!(
-        "capture: AVC offer for entity {entity}: mode {:?}, payloads {offered:?}, the iPhone's SSRC {:?}",
+        "capture: AVC offer for entity {entity}: mode {:?}, payloads {offered:?}, the iPhone's SSRC {:?}, model {:?}",
         offer.mode,
-        offer.ssrc()
+        offer.ssrc(),
+        offer.model()
     );
+    if let Some(m) = offer.model() {
+        let _ = model.set(m.to_owned());
+    }
     let wanted = std::env::var("KOALA_AVC_PAYLOAD").ok().and_then(|p| p.parse::<u8>().ok());
     let Some(payload) = wanted.into_iter().chain(PAYLOADS).find(|p| offered.contains(p)) else {
         println!("capture: none of the payloads Koala answers with was offered");
@@ -337,6 +355,7 @@ async fn udp_stream(
     socket: UdpSocket,
     keys: srtp::Context,
     ssrc: u32,
+    model: Model,
     mut stop: oneshot::Receiver<()>,
 ) {
     let mut buffer = vec![0u8; 2048];
@@ -345,10 +364,7 @@ async fn udp_stream(
     let mut peer: Option<SocketAddr> = None;
     let mut stats: Option<ReceiverStats> = None;
     let mut rollover = Rollover::default();
-    let mut mic = match crate::mic::Microphone::new(crate::mic::Microphone::sink()) {
-        Ok(m) => m,
-        Err(e) => return println!("capture: stream {stream}: {e}"),
-    };
+    let mut mic = Microphone::new(Microphone::output(), model);
     let mut tick = tokio::time::interval(RTCP_INTERVAL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {

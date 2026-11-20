@@ -285,6 +285,11 @@ impl Offer {
         self.audio()?.varint(audio::RTP_SSRC).and_then(|v| u32::try_from(v).ok())
     }
 
+    /// The iPhone's model identifier, such as `iPhone18,1`.
+    pub fn model(&self) -> Option<&str> {
+        self.endpoint.as_ref()?.string(call_info::DEVICE_TYPE)
+    }
+
     /// The payload types offered.
     pub fn payloads(&self) -> Vec<u8> {
         let flags = self.audio().and_then(|a| a.varint(audio::PAYLOAD_FLAGS)).unwrap_or(0);
@@ -364,7 +369,7 @@ mod tests {
         assert_eq!(offer.payloads(), [9, 106, 105, 104, 122, 121, 119, 13, 20, 108, 101]);
         assert_eq!(offer.blob.string(blob::USER_AGENT), Some("Viceroy 1.7.0/GK"));
         assert_eq!(offer.blob.all(blob::BANDWIDTH_SETTINGS).count(), 15);
-        assert_eq!(offer.endpoint.unwrap().string(call_info::DEVICE_TYPE), Some("iPhone18,1"));
+        assert_eq!(offer.model(), Some("iPhone18,1"));
     }
 
     #[test]

@@ -10,7 +10,7 @@ The research so far is in Warlock's `docs/`, with Koala's parts in `macos-contin
 
 - **All Rust.** Licence AGPL-3.0-or-later (`LICENSE.md`, the FSF text).
 - **AWDL comes from Warlock**, through its control API and `warlock-client` (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it under the AGPL). Koala links no Warlock internals. Koala's own services are registered with Windows' DNS-SD on the Warlock adapter, and Warlock is asked to advertise their types (Warlock's `docs/service-discovery.md`).
-- **Audio goes out through the VB-Audio virtual cable** ("CABLE Input"), fed from user space. No audio driver of our own.
+- **Audio goes out as Windows microphones, one per iPhone microphone (Parker, 2026-11-20).** Each of the iPhone's channels is one of its microphones (`docs/guest-pairing.md`, "The microphones"), and each becomes a mono microphone of its own. Koala emulates a USB Audio Class 2 device over USB/IP, attached through [usbip-win2](https://github.com/vadimgrn/usbip-win2) (BSD-2-Clause, Microsoft-signed), so Windows' own class driver makes the microphones. That replaces the VB-Audio cable, whose redistribution terms were in doubt. There is still no audio driver of our own.
 - **Trust path:** impersonate an Apple TV and use its guest QR/PIN pairing. Cloning a same-Apple-Account identity is out.
 - **No new hardware (Parker, 2026-11-18).** There is no Apple TV that can host a guest session here (Continuity Camera needs an Apple TV 4K of the 2nd generation or later, the Sing guest mic the 3rd), so the ground truth is static reverse engineering of the iOS and tvOS 27 images, then trials against the iPhone itself. Available: an iPhone on iOS 27; an Apple TV 4K (1st generation, which can't run tvOS 27) on the LAN, which speaks Rapport (`_companion-link._tcp`) but can't host; a jailbroken 3rd-generation Apple TV (iOS 8); a 2015 MacBook on macOS 11 as an AWDL witness; the RE workspace on the lab Mac `overture` (`~/koala-re`, with `ipsw` and Ghidra) and Ghidra on this PC.
 - **Local until a working prototype (Parker, 2026-11-18).** The repository goes to GitHub (`regulad/Koala`) only once something works; `.github/` (settings, CI, Dependabot, as in Warlock) comes with that push.
@@ -59,7 +59,9 @@ Everything else is wasted if the iPhone won't accept a host that isn't a real Ap
   - Other references: Apple's archived [HomeKitADK](https://github.com/apple/HomeKitADK) (Apache-2.0) for the accessory-side formulas and known-answer tests; [`idevice`](https://github.com/jkcoxson/idevice) (MIT) for an iPhone pairing with a non-Apple accessory.
 - **`ccapture`**: the RemoteDisplay guest-pairing host and the Continuity Capture control protocol (`kCMContinuityCaptureEvent*`).
 - **`avc-media`**: the AVConference negotiation blob, RTP/SRTP ([`rtc-srtp`/`rtc-rtp`](https://github.com/webrtc-rs/rtc), MIT/Apache, which take keys directly), Opus (`opus` 0.4.0 on libopus, BSD; pin `opusic-sys` 0.7.6). The Mac asks for AVC codec 16 (inferred: Opus 48 kHz), 4 channels, in "call" mode. If AAC-ELD turns up, an LGPL FFmpeg build (FDK-AAC is GPL-incompatible). A gPTP/TimeSync responder only if captures show it's needed.
-- **Audio out:** `wasapi` into "CABLE Input", with `rubato` correcting drift.
+- **Audio out:** a USB/IP server in Koala, emulating a UAC2 device with one mono input per microphone, named from `koala-capture`'s mic map. Its asynchronous IN endpoints let the device follow the iPhone's clock. Prior art: [network-audio/usbip-audio](https://github.com/network-audio/usbip-audio) (MIT). *Started 2026-11-20:*
+  - the mic map (`crates/koala-capture/data/mic-maps.json`, from every iOS 27 iPhone's device tree by `tools/mic_maps.py`);
+  - one output per microphone (`crates/koala/src/mic.rs`), which are WAV files for now.
 - **UI:** deferred. Until then, a CLI that shows the QR in the terminal.
 
 Milestones (exit criteria):
@@ -71,7 +73,7 @@ Milestones (exit criteria):
   - The tries found two things the reverse engineering hadn't shown: encryption starts straight after pair-setup, and a response must echo `_x` at its sent width.
   - The tool that made the difference was the iPhone's own log over USB: pymobiledevice3 (GPL-3.0, a tool only) in a venv, `syslog live -ei 'rapportd|ContinuityCapture|…'`.
 - **K3:** the iPhone brought onto AWDL (`_rdNeedsAWDL`), Koala connected to its RDLink server and pair-verified, and a mic-only `com.apple.continuitycapture` session negotiated. Needs more RE first: the control messages, the NSKeyedArchiver configuration, the stream descriptors and the AVConference/SRTP keying.
-- **K4:** the iPhone's microphone plays through "CABLE Output" with stable latency and drift. The repository is published around here.
+- **K4:** the iPhone's microphones appear in Windows as microphones, one each, with stable latency and drift. The repository is published around here.
 
 ## Risks
 

@@ -478,6 +478,8 @@ dependencies = [
  "koala-pairing",
  "miniz_oxide",
  "plist",
+ "serde",
+ "serde_json",
  "sha1",
  "thiserror",
  "x25519-dalek",
