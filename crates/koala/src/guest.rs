@@ -86,8 +86,7 @@ pub struct Options {
     pub wait: Option<Duration>,
     /// How long to follow a capture session; `None` until it ends.
     pub session: Option<Duration>,
-    /// In a terminal: print the QR code (and open it in Photos), and stop
-    /// on Ctrl+C.
+    /// In a terminal: print the QR code, and stop on Ctrl+C.
     pub terminal: bool,
     pub report: Report,
 }
@@ -434,8 +433,8 @@ fn mac_from_link_local(address: &std::net::Ipv6Addr) -> String {
     mac.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":")
 }
 
-/// Prints the QR code (light on dark, as terminals are), saves it as a
-/// bitmap, and opens that in Photos.
+/// Prints the QR code, light on dark as terminals are. The terminal render
+/// is all: the iPhone scans it from the screen (Parker, 2026-11-20).
 fn show_qr(url: &str) -> Result<(), String> {
     let code = QrCode::with_error_correction_level(url, EcLevel::L).map_err(|e| e.to_string())?;
     let terminal = code
@@ -444,57 +443,7 @@ fn show_qr(url: &str) -> Result<(), String> {
         .light_color(unicode::Dense1x2::Dark)
         .quiet_zone(true)
         .build();
-    // A new file each time: Photos keeps the last one open, and locked.
-    let mut nonce = [0u8; 4];
-    crate::random(&mut nonce);
-    let name = format!("koala-guest-qr-{}.bmp", nonce.iter().map(|b| format!("{b:02x}")).collect::<String>());
-    let path = std::env::temp_dir().join(name);
-    std::fs::write(&path, bitmap(&code, 12)).map_err(|e| format!("{}: {e}", path.display()))?;
     println!("\n{terminal}\n");
-    println!("Scan with the iPhone's camera ({}): {url}", path.display());
-    // On screen, where a camera can see it.
-    let photos = format!("ms-photos:viewer?fileName={}", path.display());
-    let _ = std::process::Command::new("explorer.exe").arg(photos).spawn();
+    println!("Scan with the iPhone's camera: {url}");
     Ok(())
-}
-
-/// The QR code as a 24-bit BMP, `scale` pixels a module, with the standard
-/// four-module quiet zone.
-fn bitmap(code: &QrCode, scale: usize) -> Vec<u8> {
-    const QUIET: usize = 4;
-    let modules = code.width();
-    let colors = code.to_colors();
-    let side = (modules + 2 * QUIET) * scale;
-    let row_len = (side * 3).div_ceil(4) * 4;
-    let image_len = row_len * side;
-    let mut out = Vec::with_capacity(54 + image_len);
-    // BITMAPFILEHEADER, then BITMAPINFOHEADER.
-    out.extend_from_slice(b"BM");
-    out.extend_from_slice(&((54 + image_len) as u32).to_le_bytes());
-    out.extend_from_slice(&[0; 4]);
-    out.extend_from_slice(&54u32.to_le_bytes());
-    out.extend_from_slice(&40u32.to_le_bytes());
-    out.extend_from_slice(&(side as i32).to_le_bytes());
-    out.extend_from_slice(&(side as i32).to_le_bytes());
-    out.extend_from_slice(&1u16.to_le_bytes());
-    out.extend_from_slice(&24u16.to_le_bytes());
-    out.extend_from_slice(&[0; 4]);
-    out.extend_from_slice(&(image_len as u32).to_le_bytes());
-    out.extend_from_slice(&[0; 16]);
-    // Rows run bottom to top.
-    for y in (0..side).rev() {
-        let row_start = out.len();
-        for x in 0..side {
-            let (mx, my) = ((x / scale).checked_sub(QUIET), (y / scale).checked_sub(QUIET));
-            let dark = match (mx, my) {
-                (Some(mx), Some(my)) if mx < modules && my < modules => {
-                    colors[my * modules + mx] == qrcode::Color::Dark
-                }
-                _ => false,
-            };
-            out.extend_from_slice(if dark { &[0, 0, 0] } else { &[255, 255, 255] });
-        }
-        out.resize(row_start + row_len, 0);
-    }
-    out
 }
