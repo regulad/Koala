@@ -16,6 +16,7 @@ mod dnssd;
 pub mod guest;
 mod hci;
 pub mod mic;
+mod mp4;
 mod nearby;
 pub mod tray;
 

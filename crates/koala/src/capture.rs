@@ -32,7 +32,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
-use crate::camera::{self, VideoDump};
+use crate::camera::{self, Recording};
 use crate::guest::{Event, Report};
 use crate::mic::{Microphone, Model};
 
@@ -64,9 +64,8 @@ const RTCP_INTERVAL: Duration = Duration::from_secs(1);
 /// The microphone's RTP clock: its timestamps advance 480 per 10 ms packet
 /// (trial 21).
 const MIC_CLOCK_RATE: u32 = 48_000;
-/// The camera's RTP clock: RTP video's usual 90 kHz, until a trial shows
-/// otherwise.
-const VIDEO_CLOCK_RATE: u32 = 90_000;
+/// The camera's RTP clock: 24 kHz, not RTP video's usual 90 (trial 23).
+const VIDEO_CLOCK_RATE: u32 = koala_capture::video::CLOCK_RATE;
 
 /// The session on the iPhone's RDLink listener at `iphone`, followed for
 /// `limit` or until it ends. `info` is Koala's `_systemInfo` content for
@@ -402,13 +401,13 @@ fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
 /// What a media stream's packets go to.
 enum Media {
     Microphone(Microphone),
-    Camera(VideoDump),
+    Camera(Box<Recording>),
 }
 
 impl Media {
     fn for_stream(stream: &str, model: Model) -> Self {
         if stream == name::DEFAULT_VIDEO {
-            Self::Camera(VideoDump::open())
+            Self::Camera(Box::new(Recording::open()))
         } else {
             Self::Microphone(Microphone::new(Microphone::output(), model))
         }

@@ -10,6 +10,7 @@
 //!   codec.
 //! - [`audio`]: the microphone's payload, one Opus frame per channel.
 //! - [`mic_map`]: which of the iPhone's microphones each channel is.
+//! - [`video`]: the camera's payload, HEVC.
 
 pub mod archive;
 pub mod audio;
@@ -19,3 +20,4 @@ pub mod rtcp;
 pub mod session;
 pub mod srtp;
 pub mod streams;
+pub mod video;

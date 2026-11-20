@@ -766,6 +766,36 @@ Static analysis of the multi-peer case:
   - With `--mic-wav trial.wav`, each microphone is recorded to its own WAV
     (`trial-back.wav`, …).
 
+## The camera (2026-11-20, trial 23)
+
+- **The request.** `koala guest --camera trial.mp4` asks for entity 1, the
+  camera, in place of the microphones: the same QR guest pairing, no
+  iCloud pairing. Koala asks for 1920×1080 at 30 fps, and answers the
+  iPhone's AVC offer, which has video settings, with them mirrored.
+- **The stream is HEVC,** natively, over RTP (RFC 7798), on the
+  `ContinuityCaptureMediaIdentifierDefaultVideo` stream's UDP path, over
+  LLW (`koala-capture`'s `video`):
+  - payload type 100, a header extension on every packet;
+  - the VPS, SPS, PPS and a prefix SEI in one aggregation packet ahead of
+    the first picture, then one slice a picture, in fragmentation units;
+  - Main profile, level 4, 1920×1080, 8-bit 4:2:0;
+  - a 24 kHz RTP clock, not 90 kHz: 800 a picture at 30 a second;
+  - the SEI carries a binary plist naming a network clock
+    (`NetworkTimeClockIdentity`, `NetworkTime`) and the session
+    (`ContinuityCaptureRemoteSessionID`).
+- **Two minutes** (Koala's `SESSION_TIME`): 32,178 packets, none reordered,
+  one lost; 3,536 pictures, all of which ffmpeg decodes.
+- **One IDR picture,** at the start, and none after it. A recording that
+  misses it has nothing to start from. Asking for another (an RTCP PLI or
+  FIR, RFC 4585 and 5104) is untried.
+- **The recording** is an MP4, HEVC as it came, in `hvc1` (Koala's `mp4`).
+  Windows plays it with Microsoft's HEVC Video Extensions.
+- **Before it worked,** three scans failed although the iPhone found
+  Koala's `_rdlink` instance. Its rapportd had a session stuck since that
+  morning: on each scan it checked `NearbyActionV2` against another device
+  than the QR's, and started neither its NeedsAWDL advertiser nor its AWDL
+  browser, as it had in trial 20. Restarting the iPhone cleared it.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -799,8 +829,8 @@ Static analysis of the multi-peer case:
 2. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
    Signaling TLVs), or only follow it. Prior art: shairport-sync's NQPTP.
    Two minutes ran without it (trial 22).
-3. **Sessions longer than Koala's 2-minute `SESSION_TIME`**, which trial 22
-   reached.
+3. **Sessions longer than Koala's 2-minute `SESSION_TIME`**, which trials 22
+   and 23 reached. `koala guest --session SECONDS` sets it.
 4. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
 5. **Which iOS process runs the scanner action.** The iOS file system wasn't
    extracted, so entitlements weren't read. This doesn't affect Koala.

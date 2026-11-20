@@ -2,7 +2,7 @@
 //! K2 trial:
 //!
 //! ```text
-//! koala guest [SECONDS] [--mic-wav PATH | --camera PATH]
+//! koala guest [SECONDS] [--session SECONDS] [--mic-wav PATH | --camera PATH]
 //! ```
 //!
 //! It plays an Apple TV offering guest pairing (`docs/guest-pairing.md`):
@@ -15,9 +15,10 @@ use std::time::Duration;
 
 use koala::{camera, guest, mic};
 
-/// How long the trial follows a capture session.
+/// How long the trial follows a capture session, unless `--session` says.
 const SESSION_TIME: Duration = Duration::from_secs(120);
-const USAGE: &str = "usage: koala guest [SECONDS to wait, default 600] [--mic-wav PATH | --camera PATH]";
+const USAGE: &str = "usage: koala guest [SECONDS to wait, default 600] [--session SECONDS, default 120] \
+                     [--mic-wav PATH | --camera PATH.mp4]";
 
 /// Takes `flag PATH` out of `args`: the PATH, if the flag is there.
 fn take_path(args: &mut Vec<String>, flag: &str) -> Option<std::path::PathBuf> {
@@ -39,10 +40,19 @@ async fn main() {
         let _ = mic::RECORD.set(path);
     }
     // `--camera PATH`: ask for the camera in place of the microphone, and
-    // record its packets to PATH (`koala::camera`).
+    // record its video to PATH, an MP4 (`koala::camera`).
     if let Some(path) = take_path(&mut args, "--camera") {
         let _ = camera::RECORD.set(path);
     }
+    // `--session SECONDS`: how long to follow the capture session.
+    let session = match take_path(&mut args, "--session").map(|s| s.to_string_lossy().parse::<u64>()) {
+        None => SESSION_TIME,
+        Some(Ok(seconds)) => Duration::from_secs(seconds),
+        Some(Err(_)) => {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
+        }
+    };
     let seconds = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["guest"] => 600,
         ["guest", seconds] if seconds.parse::<u64>().is_ok() => seconds.parse().unwrap(),
@@ -53,7 +63,7 @@ async fn main() {
     };
     let options = guest::Options {
         wait: Some(Duration::from_secs(seconds)),
-        session: Some(SESSION_TIME),
+        session: Some(session),
         terminal: true,
         report: guest::Report::default(),
     };
