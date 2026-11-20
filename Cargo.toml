@@ -28,6 +28,10 @@ apple-opack = "1.1.0"
 chacha20poly1305 = "0.11.0"
 ctr = "0.10.1"
 ed25519-dalek = "3.0.0"
+# FFmpeg (tools/ffmpeg.ps1 fetches the build it links): libavformat writes
+# the camera's recordings. Its ffmpeg-sys-next is held at 9.0.1 in
+# Cargo.lock: 9.1 is too new.
+ffmpeg-next = { version = "9.0.0", default-features = false, features = ["format"] }
 getrandom = "0.4.3"
 hkdf = "0.13.0"
 hmac = "0.13.0"

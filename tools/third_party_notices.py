@@ -22,6 +22,19 @@ TARGET = "x86_64-pc-windows-msvc"
 LICENCE_PREFIXES = ("license", "licence", "copying", "copyright", "notice", "unlicense")
 # Licence files of C code built into a crate, under its directory.
 VENDORED = {"opusic-sys": ["opus/COPYING"]}
+# Libraries the programs load at run time, which no crate ships: name, the
+# file naming the build, licence, source, licence files (all under the
+# repository). FFmpeg is BtbN's LGPL build, which is LGPL version 3
+# (tools/ffmpeg.ps1).
+LINKED = [
+    (
+        "FFmpeg",
+        "third_party/ffmpeg/BUILD",
+        "LGPL-3.0-or-later",
+        "https://ffmpeg.org (this build: https://github.com/BtbN/FFmpeg-Builds)",
+        ["third_party/ffmpeg/LICENSE.txt"],
+    )
+]
 
 
 def fnv1a64(data):
@@ -55,21 +68,30 @@ def main():
     third = sorted((packages[i] for i in seen - members), key=lambda p: (p["name"].lower(), p["version"]))
 
     texts = {}  # text -> number
-    entries = []
-    for p in third:
-        directory = os.path.dirname(p["manifest_path"])
-        files = sorted(f for f in os.listdir(directory) if f.lower().startswith(LICENCE_PREFIXES))
-        files = [os.path.join(directory, f) for f in files if os.path.isfile(os.path.join(directory, f))]
-        files += [os.path.join(directory, f) for f in VENDORED.get(p["name"], [])]
+
+    def numbered(paths, directory):
         refs = []
-        for path in files:
+        for path in paths:
             with open(path, encoding="utf-8", errors="replace") as f:
                 text = f.read().replace("\r\n", "\n").lstrip("\ufeff")
             # Trailing spaces off, as the repository's hooks want.
             text = "\n".join(line.rstrip() for line in text.split("\n")).strip("\n")
             number = texts.setdefault(text, len(texts) + 1)
             refs.append(f"[{number}] {os.path.relpath(path, directory).replace(os.sep, '/')}")
-        entries.append((p, refs))
+        return refs
+
+    entries = []
+    for p in third:
+        directory = os.path.dirname(p["manifest_path"])
+        files = sorted(f for f in os.listdir(directory) if f.lower().startswith(LICENCE_PREFIXES))
+        files = [os.path.join(directory, f) for f in files if os.path.isfile(os.path.join(directory, f))]
+        files += [os.path.join(directory, f) for f in VENDORED.get(p["name"], [])]
+        entries.append((p, numbered(files, directory)))
+    for name, build, licence, source, files in LINKED:
+        with open(os.path.join(root, build), encoding="utf-8") as f:
+            version = f.read().strip()
+        p = {"name": name, "version": version, "license": licence, "repository": source, "source": "linked"}
+        entries.append((p, numbered([os.path.join(root, f) for f in files], root)))
 
     out = [
         "Third-party software in Koala",

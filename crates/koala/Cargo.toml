@@ -8,6 +8,7 @@ authors.workspace = true
 
 [dependencies]
 apple-opack.workspace = true
+ffmpeg-next.workspace = true
 getrandom.workspace = true
 koala-capture.workspace = true
 koala-pairing.workspace = true

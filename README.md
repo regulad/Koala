@@ -14,13 +14,17 @@ and where each part stands.
 
 ## Build
 
-You need Rust (stable). Warlock comes in as a submodule, for its client
-crate; its own submodules aren't needed.
+You need Rust (stable), PowerShell 7 and LLVM (for libclang, which
+generates the FFmpeg bindings). Warlock comes in as a submodule, for its
+client crate; its own submodules aren't needed. Koala links FFmpeg, whose
+build `tools/ffmpeg.ps1` fetches; the FFmpeg DLLs end up beside the
+programs.
 
 ```text
 git clone https://github.com/regulad/Koala
 cd Koala
 git submodule update --init
+pwsh tools/ffmpeg.ps1
 cargo build --release
 cargo test --workspace
 ```

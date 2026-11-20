@@ -1,4 +1,6 @@
 /target
+# FFmpeg, as tools/ffmpeg.ps1 fetches it.
+/third_party/ffmpeg/
 # Captures can hold personal data (device names, addresses): never committed.
 *.pcapng
 /captures/

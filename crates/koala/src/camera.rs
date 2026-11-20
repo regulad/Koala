@@ -1,9 +1,9 @@
 //! The camera's video, recorded: `koala guest --camera PATH` asks the
 //! iPhone for its camera (entity 1) in place of its microphone, and writes
 //! what it sends to PATH as an MP4: HEVC as it arrives, not re-encoded
-//! (`koala_capture::video`). Windows plays it with Microsoft's HEVC Video
-//! Extensions. The iPhone's AVC offer is kept beside it, as
-//! `PATH.offer.bplist`.
+//! (`koala_capture::video`), in FFmpeg's MP4 muxer (`crate::mp4`). Windows
+//! plays it with Microsoft's HEVC Video Extensions. The iPhone's AVC offer is
+//! kept beside it, as `PATH.offer.bplist`.
 //!
 //! The recording starts at the first picture a decoder can start at: the
 //! iPhone sent one, at the start of the session, in trial 23. It's indexed
@@ -12,7 +12,6 @@
 
 use std::collections::BTreeMap;
 use std::fs::File;
-use std::io::BufWriter;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -28,9 +27,9 @@ pub static RECORD: OnceLock<PathBuf> = OnceLock::new();
 /// The camera's stream: counted, and recorded to `RECORD` if it's set.
 pub struct Recording {
     path: Option<PathBuf>,
-    /// The file, until the first keyframe starts the MP4 in it.
-    file: Option<File>,
-    mp4: Option<Mp4Writer<BufWriter<File>>>,
+    /// Whether the recording is still to start, at the first keyframe.
+    waiting: bool,
+    mp4: Option<Mp4Writer>,
     depacketizer: Depacketizer,
     /// The latest parameter sets: VPS, SPS, PPS.
     parameters: [Option<Vec<u8>>; 3],
@@ -45,23 +44,24 @@ impl Recording {
     /// Records to `RECORD`, or counts only.
     pub fn open() -> Self {
         let path = RECORD.get().cloned();
-        let file = path.as_ref().and_then(|path| match File::create(path) {
-            Ok(f) => {
+        // Made now, so a path that can't be written fails before the stream.
+        let writable = path.as_ref().is_some_and(|path| match File::create(path) {
+            Ok(_) => {
                 println!("camera: recording to {}", path.display());
-                Some(f)
+                true
             }
             Err(e) => {
                 println!("camera: can't record to {}: {e}", path.display());
-                None
+                false
             }
         });
-        Self::to(path, file)
+        Self::to(path, writable)
     }
 
-    fn to(path: Option<PathBuf>, file: Option<File>) -> Self {
+    fn to(path: Option<PathBuf>, waiting: bool) -> Self {
         Self {
             path,
-            file,
+            waiting,
             mp4: None,
             depacketizer: Depacketizer::default(),
             parameters: [None, None, None],
@@ -78,7 +78,7 @@ impl Recording {
         self.packets += 1;
         self.bytes += rtp.len() as u64;
         *self.payload_types.entry(rtp[1] & 0x7f).or_default() += 1;
-        if self.file.is_none() && self.mp4.is_none() {
+        if !self.waiting && self.mp4.is_none() {
             return;
         }
         let seq = u16::from_be_bytes([rtp[2], rtp[3]]);
@@ -110,9 +110,7 @@ impl Recording {
             return;
         }
         let Some(mp4) = &mut self.mp4 else { return };
-        // The parameter sets are in hvcC, and only there.
-        let units = unit.nals.iter().filter(|n| !nal_type(n).is_some_and(video::is_parameter_set));
-        if let Err(e) = mp4.write_sample(unit.timestamp, units.map(Vec::as_slice), unit.is_keyframe()) {
+        if let Err(e) = mp4.write_sample(unit.timestamp, unit.nals.iter().map(Vec::as_slice), unit.is_keyframe()) {
             println!("camera: writing the recording: {e}; it stops here");
             self.mp4 = None;
         }
@@ -125,8 +123,9 @@ impl Recording {
         if !unit.is_keyframe() {
             return false;
         }
-        let Some(file) = self.file.take() else { return false };
-        match Mp4Writer::new(BufWriter::new(file), video::CLOCK_RATE, vps, sps, pps) {
+        let Some(path) = self.path.as_ref().filter(|_| self.waiting) else { return false };
+        self.waiting = false;
+        match Mp4Writer::create(path, video::CLOCK_RATE, vps, sps, pps) {
             Ok(mp4) => {
                 if self.skipped > 0 {
                     println!("camera: recording from here, {} pictures in", self.skipped);
@@ -161,7 +160,7 @@ impl Drop for Recording {
         }
         let Some(path) = &self.path else { return };
         let Some(mp4) = self.mp4.take() else {
-            if self.file.is_some() {
+            if self.waiting {
                 println!("camera: no picture to start at arrived; {} is empty", path.display());
             }
             return;
@@ -191,7 +190,7 @@ mod tests {
 
     #[test]
     fn packets_are_counted_by_type() {
-        let mut camera = Recording::to(None, None);
+        let mut camera = Recording::to(None, false);
         let mut rtp = [0u8; 20];
         rtp[0] = 0x80;
         rtp[1] = 0x80 | 100;
@@ -215,7 +214,7 @@ mod tests {
         let mut out = dump.into_os_string();
         out.push(".mp4");
         let out = PathBuf::from(out);
-        let mut camera = Recording::to(Some(out.clone()), Some(File::create(&out).unwrap()));
+        let mut camera = Recording::to(Some(out.clone()), true);
         let mut rest = &data[..];
         while let [high, low, tail @ ..] = rest {
             let len = usize::from(u16::from_be_bytes([*high, *low]));

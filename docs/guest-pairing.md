@@ -788,8 +788,9 @@ Static analysis of the multi-peer case:
 - **One IDR picture,** at the start, and none after it. A recording that
   misses it has nothing to start from. Asking for another (an RTCP PLI or
   FIR, RFC 4585 and 5104) is untried.
-- **The recording** is an MP4, HEVC as it came, in `hvc1` (Koala's `mp4`).
-  Windows plays it with Microsoft's HEVC Video Extensions.
+- **The recording** is an MP4, HEVC as it came, in `hvc1`, written by
+  FFmpeg's muxer (Koala's `mp4`). Windows plays it with Microsoft's HEVC
+  Video Extensions.
 - **Before it worked,** three scans failed although the iPhone found
   Koala's `_rdlink` instance. Its rapportd had a session stuck since that
   morning: on each scan it checked `NearbyActionV2` against another device

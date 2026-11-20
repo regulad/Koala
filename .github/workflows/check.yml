@@ -34,6 +34,9 @@ jobs:
       # windows-reactor comes from windows-rs's repository, whose history is
       # over 3 GB: git's own fetch is much faster than Cargo's built-in one.
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # ffmpeg-sys-next generates its bindings with bindgen, which loads
+      # libclang: the runner's LLVM has it.
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
     steps:
       # The tree is LF throughout; Windows runners would check it out CRLF.
       - name: Line endings
@@ -47,6 +50,10 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           rustup component add rustfmt clippy
+      # The FFmpeg Koala links, pinned by its SHA-256 (tools/ffmpeg.ps1).
+      - name: FFmpeg
+        shell: pwsh
+        run: ./tools/ffmpeg.ps1
       - name: cargo-deny
         shell: pwsh
         run: |

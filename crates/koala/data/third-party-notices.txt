@@ -39,80 +39,85 @@ base64 0.23.1
   Source: https://github.com/marshallpierce/rust-base64
   Files: [8] LICENSE-APACHE, [11] LICENSE-MIT
 
+bitflags 2.13.2
+  Licence: MIT OR Apache-2.0
+  Source: https://github.com/bitflags/bitflags
+  Files: [8] LICENSE-APACHE, [12] LICENSE-MIT
+
 block-buffer 0.12.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/utils
-  Files: [4] LICENSE-APACHE, [12] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [13] LICENSE-MIT
 
 bytes 1.12.1
   Licence: MIT
   Source: https://github.com/tokio-rs/bytes
-  Files: [13] LICENSE
+  Files: [14] LICENSE
 
 cfg-if 1.0.5
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-lang/cfg-if
-  Files: [8] LICENSE-APACHE, [14] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [15] LICENSE-MIT
 
 chacha20 0.10.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/stream-ciphers
-  Files: [4] LICENSE-APACHE, [15] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [16] LICENSE-MIT
 
 chacha20poly1305 0.11.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/AEADs
-  Files: [4] LICENSE-APACHE, [15] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [16] LICENSE-MIT
 
 cipher 0.5.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/traits
-  Files: [4] LICENSE-APACHE, [16] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [17] LICENSE-MIT
 
 cmov 0.5.4
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/utils
-  Files: [17] LICENSE-APACHE, [18] LICENSE-MIT
+  Files: [18] LICENSE-APACHE, [19] LICENSE-MIT
 
 const-oid 0.10.2
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/formats
-  Files: [4] LICENSE-APACHE, [19] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [20] LICENSE-MIT
 
 cpubits 0.1.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/utils
-  Files: [4] LICENSE-APACHE, [20] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [21] LICENSE-MIT
 
 cpufeatures 0.3.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/utils
-  Files: [4] LICENSE-APACHE, [19] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [20] LICENSE-MIT
 
 crypto-bigint 0.7.10
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/crypto-bigint
-  Files: [4] LICENSE-APACHE, [21] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [22] LICENSE-MIT
 
 crypto-common 0.2.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/traits
-  Files: [4] LICENSE-APACHE, [22] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [23] LICENSE-MIT
 
 ctr 0.10.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/block-modes
-  Files: [4] LICENSE-APACHE, [23] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [24] LICENSE-MIT
 
 ctutils 0.4.8
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/utils
-  Files: [17] LICENSE-APACHE, [24] LICENSE-MIT
+  Files: [18] LICENSE-APACHE, [25] LICENSE-MIT
 
 curve25519-dalek 5.0.0
   Licence: BSD-3-Clause
   Source: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/curve25519-dalek
-  Files: [25] LICENSE
+  Files: [26] LICENSE
 
 curve25519-dalek-derive 0.1.1
   Licence: MIT/Apache-2.0
@@ -122,312 +127,326 @@ curve25519-dalek-derive 0.1.1
 deranged 0.5.9
   Licence: MIT OR Apache-2.0
   Source: https://github.com/jhpratt/deranged
-  Files: [26] LICENSE-Apache, [27] LICENSE-MIT
+  Files: [27] LICENSE-Apache, [28] LICENSE-MIT
 
 digest 0.11.3
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/traits
-  Files: [4] LICENSE-APACHE, [28] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [29] LICENSE-MIT
 
 ed25519 3.0.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/signatures
-  Files: [29] LICENSE-APACHE, [30] LICENSE-MIT
+  Files: [30] LICENSE-APACHE, [31] LICENSE-MIT
 
 ed25519-dalek 3.0.0
   Licence: BSD-3-Clause
   Source: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/ed25519-dalek
-  Files: [31] LICENSE
+  Files: [32] LICENSE
 
 equivalent 1.0.3
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/indexmap-rs/equivalent
-  Files: [8] LICENSE-APACHE, [32] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [33] LICENSE-MIT
+
+ffmpeg-next 9.0.0
+  Licence: WTFPL
+  Source: https://github.com/zmwangx/rust-ffmpeg
+  Files: [34] LICENSE
+
+ffmpeg-sys-next 9.0.1
+  Licence: WTFPL
+  Source: https://github.com/zmwangx/rust-ffmpeg-sys
 
 futures-core 0.3.34
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-lang/futures-rs
-  Files: [33] LICENSE-APACHE, [34] LICENSE-MIT
+  Files: [35] LICENSE-APACHE, [36] LICENSE-MIT
 
 getrandom 0.4.3
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-random/getrandom
-  Files: [35] LICENSE-APACHE, [36] LICENSE-MIT
+  Files: [37] LICENSE-APACHE, [38] LICENSE-MIT
 
 hashbrown 0.17.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-lang/hashbrown
-  Files: [8] LICENSE-APACHE, [37] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [39] LICENSE-MIT
 
 hkdf 0.13.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/KDFs/
-  Files: [4] LICENSE-APACHE, [38] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [40] LICENSE-MIT
 
 hmac 0.13.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/MACs
-  Files: [4] LICENSE-APACHE, [39] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [41] LICENSE-MIT
 
 http 1.5.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/hyperium/http
-  Files: [40] LICENSE-APACHE, [41] LICENSE-MIT
+  Files: [42] LICENSE-APACHE, [43] LICENSE-MIT
 
 http-body 1.1.0
   Licence: MIT
   Source: https://github.com/hyperium/http-body
-  Files: [42] LICENSE
+  Files: [44] LICENSE
 
 http-body-util 0.1.5
   Licence: MIT
   Source: https://github.com/hyperium/http-body
-  Files: [42] LICENSE
+  Files: [44] LICENSE
 
 httparse 1.10.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/seanmonstar/httparse
-  Files: [8] LICENSE-APACHE, [43] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [45] LICENSE-MIT
 
 hybrid-array 0.4.15
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/hybrid-array
-  Files: [4] LICENSE-APACHE, [18] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [19] LICENSE-MIT
 
 hyper 1.12.0
   Licence: MIT
   Source: https://github.com/hyperium/hyper
-  Files: [44] LICENSE
+  Files: [46] LICENSE
 
 hyper-util 0.1.21
   Licence: MIT
   Source: https://github.com/hyperium/hyper-util
-  Files: [45] LICENSE
+  Files: [47] LICENSE
 
 indexmap 2.14.2
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/indexmap-rs/indexmap
-  Files: [8] LICENSE-APACHE, [46] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [48] LICENSE-MIT
 
 inout 0.2.5
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/utils
-  Files: [4] LICENSE-APACHE, [47] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [49] LICENSE-MIT
 
 itoa 1.0.18
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/itoa
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
+
+libc 0.2.191
+  Licence: MIT OR Apache-2.0
+  Source: https://github.com/rust-lang/libc
+  Files: [50] LICENSE-APACHE, [51] LICENSE-MIT
 
 memchr 2.8.3
   Licence: Unlicense OR MIT
   Source: https://github.com/BurntSushi/memchr
-  Files: [49] COPYING, [50] LICENSE-MIT, [51] UNLICENSE
+  Files: [52] COPYING, [53] LICENSE-MIT, [54] UNLICENSE
 
 miniz_oxide 0.9.1
   Licence: MIT OR Zlib OR Apache-2.0
   Source: https://github.com/Frommi/miniz_oxide/tree/master/miniz_oxide
-  Files: [52] LICENSE, [53] LICENSE-APACHE.md, [54] LICENSE-MIT.md, [55] LICENSE-ZLIB.md
+  Files: [55] LICENSE, [56] LICENSE-APACHE.md, [57] LICENSE-MIT.md, [58] LICENSE-ZLIB.md
 
 mio 1.2.4
   Licence: MIT
   Source: https://github.com/tokio-rs/mio
-  Files: [56] LICENSE
+  Files: [59] LICENSE
 
 num-conv 0.2.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/jhpratt/num-conv
-  Files: [53] LICENSE-Apache, [57] LICENSE-MIT
+  Files: [56] LICENSE-Apache, [60] LICENSE-MIT
 
 num-traits 0.2.19
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-num/num-traits
-  Files: [8] LICENSE-APACHE, [58] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [12] LICENSE-MIT
 
 opus 0.4.0
   Licence: MIT/Apache-2.0
   Source: https://github.com/SpaceManiac/opus-rs
-  Files: [8] LICENSE-APACHE, [59] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [61] LICENSE-MIT
 
 opusic-sys 0.7.6
   Licence: BSD-3-Clause
   Source: https://github.com/DoumanAsh/opusic-sys
-  Files: [60] LICENSE, [60] opus/COPYING
+  Files: [62] LICENSE, [62] opus/COPYING
 
 pin-project-lite 0.2.17
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/taiki-e/pin-project-lite
-  Files: [53] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [56] LICENSE-APACHE, [3] LICENSE-MIT
 
 plist 1.10.3
   Licence: MIT
   Source: https://github.com/ebarnard/rust-plist/
-  Files: [61] LICENCE
+  Files: [63] LICENCE
 
 poly1305 0.9.1
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/universal-hashes
-  Files: [4] LICENSE-APACHE, [62] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [64] LICENSE-MIT
 
 powerfmt 0.2.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/jhpratt/powerfmt
-  Files: [63] LICENSE-Apache, [64] LICENSE-MIT
+  Files: [65] LICENSE-Apache, [66] LICENSE-MIT
 
 proc-macro2 1.0.107
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/proc-macro2
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 qrcode 0.14.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/kennytm/qrcode-rust
-  Files: [17] LICENSE-APACHE.txt, [65] LICENSE-MIT.txt
+  Files: [18] LICENSE-APACHE.txt, [67] LICENSE-MIT.txt
 
 quick-xml 0.42.0
   Licence: MIT
   Source: https://github.com/tafia/quick-xml
-  Files: [66] LICENSE-MIT.md
+  Files: [68] LICENSE-MIT.md
 
 quote 1.0.47
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/quote
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 rand_core 0.10.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-random/rand_core
-  Files: [67] COPYRIGHT, [68] LICENSE-APACHE, [69] LICENSE-MIT
+  Files: [69] COPYRIGHT, [70] LICENSE-APACHE, [71] LICENSE-MIT
 
 serde 1.0.229
   Licence: MIT OR Apache-2.0
   Source: https://github.com/serde-rs/serde
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 serde_core 1.0.229
   Licence: MIT OR Apache-2.0
   Source: https://github.com/serde-rs/serde
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 serde_derive 1.0.229
   Licence: MIT OR Apache-2.0
   Source: https://github.com/serde-rs/serde
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 serde_json 1.0.154
   Licence: MIT OR Apache-2.0
   Source: https://github.com/serde-rs/json
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 serdect 0.4.3
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/formats
-  Files: [17] LICENSE-APACHE, [70] LICENSE-MIT
+  Files: [18] LICENSE-APACHE, [72] LICENSE-MIT
 
 sha1 0.11.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/hashes
-  Files: [4] LICENSE-APACHE, [71] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [73] LICENSE-MIT
 
 sha2 0.11.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/hashes
-  Files: [4] LICENSE-APACHE, [71] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [73] LICENSE-MIT
 
 signature 3.0.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/traits
-  Files: [4] LICENSE-APACHE, [30] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [31] LICENSE-MIT
 
 smallvec 1.16.4
   Licence: MIT OR Apache-2.0
   Source: https://github.com/servo/rust-smallvec
-  Files: [8] LICENSE-APACHE, [72] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [74] LICENSE-MIT
 
 socket2 0.6.5
   Licence: MIT OR Apache-2.0
   Source: https://github.com/rust-lang/socket2
-  Files: [8] LICENSE-APACHE, [14] LICENSE-MIT
+  Files: [8] LICENSE-APACHE, [15] LICENSE-MIT
 
 srp 0.7.0-rc.3
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/PAKEs
-  Files: [4] LICENSE-APACHE, [39] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [41] LICENSE-MIT
 
 subtle 2.6.1
   Licence: BSD-3-Clause
   Source: https://github.com/dalek-cryptography/subtle
-  Files: [73] LICENSE
+  Files: [75] LICENSE
 
 syn 2.0.119
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/syn
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 syn 3.0.9
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/syn
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 thiserror 2.0.21
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/thiserror
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 thiserror-impl 2.0.21
   Licence: MIT OR Apache-2.0
   Source: https://github.com/dtolnay/thiserror
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT
 
 time 0.3.55
   Licence: MIT OR Apache-2.0
   Source: https://github.com/time-rs/time
-  Files: [53] LICENSE-Apache, [74] LICENSE-MIT
+  Files: [56] LICENSE-Apache, [76] LICENSE-MIT
 
 time-core 0.1.9
   Licence: MIT OR Apache-2.0
   Source: https://github.com/time-rs/time
-  Files: [53] LICENSE-Apache, [74] LICENSE-MIT
+  Files: [56] LICENSE-Apache, [76] LICENSE-MIT
 
 time-macros 0.2.32
   Licence: MIT OR Apache-2.0
   Source: https://github.com/time-rs/time
-  Files: [53] LICENSE-Apache, [74] LICENSE-MIT
+  Files: [56] LICENSE-Apache, [76] LICENSE-MIT
 
 tokio 1.54.1
   Licence: MIT
   Source: https://github.com/tokio-rs/tokio
-  Files: [75] LICENSE
+  Files: [77] LICENSE
 
 tokio-macros 2.7.2
   Licence: MIT
   Source: https://github.com/tokio-rs/tokio
-  Files: [76] LICENSE
+  Files: [78] LICENSE
 
 try-lock 0.2.5
   Licence: MIT
   Source: https://github.com/seanmonstar/try-lock
-  Files: [77] LICENSE
+  Files: [79] LICENSE
 
 typenum 1.20.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/paholg/typenum
-  Files: [78] LICENSE, [79] LICENSE-APACHE, [80] LICENSE-MIT
+  Files: [80] LICENSE, [81] LICENSE-APACHE, [82] LICENSE-MIT
 
 unicode-ident 1.0.27
   Licence: (MIT OR Apache-2.0) AND Unicode-3.0
   Source: https://github.com/dtolnay/unicode-ident
-  Files: [48] LICENSE-APACHE, [3] LICENSE-MIT, [81] LICENSE-UNICODE
+  Files: [50] LICENSE-APACHE, [3] LICENSE-MIT, [83] LICENSE-UNICODE
 
 universal-hash 0.6.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/RustCrypto/traits
-  Files: [4] LICENSE-APACHE, [82] LICENSE-MIT
+  Files: [4] LICENSE-APACHE, [84] LICENSE-MIT
 
 want 0.3.2
   Licence: MIT
   Source: https://github.com/seanmonstar/want
-  Files: [83] LICENSE
+  Files: [85] LICENSE
 
 warlock-client 0.2.2
   Licence: GPL-2.0-only OR AGPL-3.0-or-later
@@ -436,132 +455,137 @@ warlock-client 0.2.2
 windows 0.62.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-collections 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-collections 0.3.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-core 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-core 0.62.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-future 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-future 0.3.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-implement 0.60.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-interface 0.59.3
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-link 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-link 0.2.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-numerics 0.3.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-reactor 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-reference 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-result 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-result 0.4.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-strings 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-strings 0.5.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-sys 0.61.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-threading 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-threading 0.2.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-time 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 windows-window 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [84] license-apache-2.0, [85] license-mit
+  Files: [86] license-apache-2.0, [87] license-mit
 
 x25519-dalek 3.0.0
   Licence: BSD-3-Clause
   Source: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/x25519-dalek
-  Files: [86] LICENSE
+  Files: [88] LICENSE
 
 zeroize 1.9.1
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/utils
-  Files: [17] LICENSE-APACHE, [87] LICENSE-MIT
+  Files: [18] LICENSE-APACHE, [89] LICENSE-MIT
 
 zmij 1.0.23
   Licence: MIT
   Source: https://github.com/dtolnay/zmij
   Files: [3] LICENSE-MIT
+
+FFmpeg ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0
+  Licence: LGPL-3.0-or-later
+  Source: https://ffmpeg.org (this build: https://github.com/BtbN/FFmpeg-Builds)
+  Files: [90] third_party/ffmpeg/LICENSE.txt
 
 
 Licence texts
@@ -1418,7 +1442,7 @@ THE SOFTWARE.
 
 [12]
 
-Copyright (c) 2018-2025 The RustCrypto Project Developers
+Copyright (c) 2014 The Rust Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1447,7 +1471,7 @@ DEALINGS IN THE SOFTWARE.
 
 [13]
 
-Copyright (c) 2018 Carl Lerche
+Copyright (c) 2018-2025 The RustCrypto Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1476,7 +1500,7 @@ DEALINGS IN THE SOFTWARE.
 
 [14]
 
-Copyright (c) 2014 Alex Crichton
+Copyright (c) 2018 Carl Lerche
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1505,7 +1529,7 @@ DEALINGS IN THE SOFTWARE.
 
 [15]
 
-Copyright (c) 2019-2026 The RustCrypto Project Developers
+Copyright (c) 2014 Alex Crichton
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1534,7 +1558,7 @@ DEALINGS IN THE SOFTWARE.
 
 [16]
 
-Copyright (c) 2016-2025 RustCrypto Developers
+Copyright (c) 2019-2026 The RustCrypto Project Developers
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated
@@ -1562,6 +1586,35 @@ DEALINGS IN THE SOFTWARE.
 
 
 [17]
+
+Copyright (c) 2016-2025 RustCrypto Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+[18]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -1766,7 +1819,7 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 
 
-[18]
+[19]
 
 Copyright (c) 2022-2026 The RustCrypto Project Developers
 
@@ -1795,7 +1848,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[19]
+[20]
 
 Copyright (c) 2020-2026 The RustCrypto Project Developers
 
@@ -1824,7 +1877,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[20]
+[21]
 
 Copyright (c) 2023-2026 The RustCrypto Project Developers
 
@@ -1853,7 +1906,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[21]
+[22]
 
 Copyright (c) 2021-2026 The RustCrypto Project Developers
 
@@ -1882,7 +1935,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[22]
+[23]
 
 Copyright (c) 2021-2026 RustCrypto Developers
 
@@ -1911,7 +1964,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[23]
+[24]
 
 Copyright (c) 2018-2022 RustCrypto Developers
 Copyright (c) 2018 Artyom Pavlov
@@ -1941,7 +1994,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[24]
+[25]
 
 Copyright (c) 2025-2026 The RustCrypto Project Developers
 
@@ -1970,7 +2023,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[25]
+[26]
 
 Copyright (c) 2016-2021 isis agora lovecruft. All rights reserved.
 Copyright (c) 2016-2021 Henry de Valence. All rights reserved.
@@ -2003,7 +2056,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[26]
+[27]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -2208,7 +2261,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    limitations under the License.
 
 
-[27]
+[28]
 
 Copyright (c) 2024 Jacob Pratt et al.
 
@@ -2231,7 +2284,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[28]
+[29]
 
 Copyright (c) 2017-2025 RustCrypto Developers
 Copyright (c) 2017 Artyom Pavlov
@@ -2261,7 +2314,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[29]
+[30]
 
                               Apache License
                         Version 2.0, January 2004
@@ -2466,7 +2519,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-[30]
+[31]
 
 Copyright (c) 2018-2026 RustCrypto Developers
 
@@ -2495,7 +2548,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[31]
+[32]
 
 Copyright (c) 2017-2019 isis agora lovecruft. All rights reserved.
 
@@ -2527,7 +2580,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[32]
+[33]
 
 Copyright (c) 2016--2023
 
@@ -2556,7 +2609,22 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[33]
+[34]
+
+            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+                    Version 2, December 2004
+
+ Everyone is permitted to copy and distribute verbatim or modified
+ copies of this license document, and changing it is allowed as long
+ as the name is changed.
+
+            DO WHAT THE FUCK YOU WANT TO PUBLIC LICENSE
+   TERMS AND CONDITIONS FOR COPYING, DISTRIBUTION AND MODIFICATION
+
+  0. You just DO WHAT THE FUCK YOU WANT TO.
+
+
+[35]
 
                               Apache License
                         Version 2.0, January 2004
@@ -2762,7 +2830,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-[34]
+[36]
 
 Copyright (c) 2016 Alex Crichton
 Copyright (c) 2017 The Tokio Authors
@@ -2792,7 +2860,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[35]
+[37]
 
                               Apache License
                         Version 2.0, January 2004
@@ -2997,7 +3065,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-[36]
+[38]
 
 Copyright (c) 2018-2026 The rust-random Project Developers
 Copyright (c) 2014 The Rust Project Developers
@@ -3027,7 +3095,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[37]
+[39]
 
 Copyright (c) 2016 Amanieu d'Antras
 
@@ -3056,7 +3124,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[38]
+[40]
 
 Copyright (c) 2015-2018 Vlad Filippov
 Copyright (c) 2018-2021 RustCrypto Developers
@@ -3086,7 +3154,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[39]
+[41]
 
 Copyright (c) 2017 Artyom Pavlov
 
@@ -3115,7 +3183,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[40]
+[42]
 
                               Apache License
                         Version 2.0, January 2004
@@ -3320,7 +3388,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-[41]
+[43]
 
 Copyright (c) 2017 http-rs authors
 
@@ -3349,7 +3417,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[42]
+[44]
 
 Copyright (c) 2019-2026 Sean McArthur & Hyper Contributors
 
@@ -3378,7 +3446,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[43]
+[45]
 
 Copyright (c) 2015-2025 Sean McArthur
 
@@ -3401,7 +3469,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[44]
+[46]
 
 Copyright (c) 2014-2026 Sean McArthur
 
@@ -3424,7 +3492,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[45]
+[47]
 
 Copyright (c) 2023-2025 Sean McArthur
 
@@ -3447,7 +3515,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[46]
+[48]
 
 Copyright (c) 2016--2017
 
@@ -3476,7 +3544,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[47]
+[49]
 
 Copyright (c) 2022-2025 The RustCrypto Project Developers
 Copyright (c) 2022 Artyom Pavlov
@@ -3506,7 +3574,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[48]
+[50]
 
                               Apache License
                         Version 2.0, January 2004
@@ -3686,14 +3754,43 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 END OF TERMS AND CONDITIONS
 
 
-[49]
+[51]
+
+Copyright (c) The Rust Project Developers
+
+Permission is hereby granted, free of charge, to any
+person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the
+Software without restriction, including without
+limitation the rights to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies of
+the Software, and to permit persons to whom the Software
+is furnished to do so, subject to the following
+conditions:
+
+The above copyright notice and this permission notice
+shall be included in all copies or substantial portions
+of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+
+[52]
 
 This project is dual-licensed under the Unlicense and MIT licenses.
 
 You may use this code under the terms of either license.
 
 
-[50]
+[53]
 
 The MIT License (MIT)
 
@@ -3718,7 +3815,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[51]
+[54]
 
 This is free and unencumbered software released into the public domain.
 
@@ -3746,7 +3843,7 @@ OTHER DEALINGS IN THE SOFTWARE.
 For more information, please refer to <http://unlicense.org/>
 
 
-[52]
+[55]
 
 MIT License
 
@@ -3775,7 +3872,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[53]
+[56]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -3955,7 +4052,7 @@ SOFTWARE.
    END OF TERMS AND CONDITIONS
 
 
-[54]
+[57]
 
 MIT License
 
@@ -3983,7 +4080,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[55]
+[58]
 
 Copyright 2013-2014 RAD Game Tools and Valve Software
 Copyright 2010-2014 Rich Geldreich and Tenacious Software LLC
@@ -4001,7 +4098,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 
 
-[56]
+[59]
 
 Copyright (c) 2014 Carl Lerche and other MIO contributors
 
@@ -4024,7 +4121,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[57]
+[60]
 
 Copyright (c) Jacob Pratt
 
@@ -4047,36 +4144,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[58]
-
-Copyright (c) 2014 The Rust Project Developers
-
-Permission is hereby granted, free of charge, to any
-person obtaining a copy of this software and associated
-documentation files (the "Software"), to deal in the
-Software without restriction, including without
-limitation the rights to use, copy, modify, merge,
-publish, distribute, sublicense, and/or sell copies of
-the Software, and to permit persons to whom the Software
-is furnished to do so, subject to the following
-conditions:
-
-The above copyright notice and this permission notice
-shall be included in all copies or substantial portions
-of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
-ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
-TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
-PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
-OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
-IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
-DEALINGS IN THE SOFTWARE.
-
-
-[59]
+[61]
 
 Copyright (c) 2016 Tad Hardesty
 
@@ -4099,7 +4167,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[60]
+[62]
 
 Copyright 2001-2023 Xiph.Org, Skype Limited, Octasic,
                     Jean-Marc Valin, Timothy B. Terriberry,
@@ -4147,7 +4215,7 @@ Broadcom Corporation:
 https://datatracker.ietf.org/ipr/1526/
 
 
-[61]
+[63]
 
 Copyright (c) 2015 Edward Barnard
 
@@ -4170,7 +4238,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[62]
+[64]
 
 Copyright (c) 2015-2026 The RustCrypto Project Developers
 
@@ -4199,7 +4267,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[63]
+[65]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -4404,7 +4472,7 @@ DEALINGS IN THE SOFTWARE.
    limitations under the License.
 
 
-[64]
+[66]
 
 Copyright (c) 2023 Jacob Pratt et al.
 
@@ -4427,7 +4495,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[65]
+[67]
 
 Copyright (c) 2016 kennytm
 
@@ -4449,7 +4517,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
-[66]
+[68]
 
 The MIT License (MIT)
 
@@ -4476,7 +4544,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[67]
+[69]
 
 Copyrights in the Rand project are retained by their contributors. No
 copyright assignment is required to contribute to the Rand project.
@@ -4489,7 +4557,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 
 
-[68]
+[70]
 
                               Apache License
                         Version 2.0, January 2004
@@ -4680,7 +4748,7 @@ APPENDIX: How to apply the Apache License to your work.
    identification within third-party archives.
 
 
-[69]
+[71]
 
 Copyright (c) 2018-2026 The Rand Project Developers
 
@@ -4709,7 +4777,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[70]
+[72]
 
 MIT License
 
@@ -4734,7 +4802,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[71]
+[73]
 
 Copyright (c) 2016-2026 The RustCrypto Project Developers
 Copyright (c) 2016 Artyom Pavlov
@@ -4766,7 +4834,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[72]
+[74]
 
 Copyright (c) 2018 The Servo Project Developers
 
@@ -4795,7 +4863,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[73]
+[75]
 
 Copyright (c) 2016-2017 Isis Agora Lovecruft, Henry de Valence. All rights reserved.
 Copyright (c) 2016-2024 Isis Agora Lovecruft. All rights reserved.
@@ -4828,7 +4896,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[74]
+[76]
 
 Copyright (c) Jacob Pratt et al.
 
@@ -4851,7 +4919,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[75]
+[77]
 
 MIT License
 
@@ -4876,7 +4944,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[76]
+[78]
 
 MIT License
 
@@ -4902,7 +4970,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[77]
+[79]
 
 Copyright (c) 2018-2023 Sean McArthur
 Copyright (c) 2016 Alex Crichton
@@ -4926,12 +4994,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[78]
+[80]
 
 MIT OR Apache-2.0
 
 
-[79]
+[81]
 
                               Apache License
                         Version 2.0, January 2004
@@ -5136,7 +5204,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 
 
-[80]
+[82]
 
 The MIT License (MIT)
 
@@ -5161,7 +5229,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[81]
+[83]
 
 UNICODE LICENSE V3
 
@@ -5204,7 +5272,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 
 
-[82]
+[84]
 
 Copyright (c) 2019-2025 RustCrypto Developers
 
@@ -5233,7 +5301,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[83]
+[85]
 
 Copyright (c) 2018-2019 Sean McArthur
 
@@ -5256,7 +5324,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[84]
+[86]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -5461,7 +5529,7 @@ THE SOFTWARE.
    limitations under the License.
 
 
-[85]
+[87]
 
     MIT License
 
@@ -5486,7 +5554,7 @@ THE SOFTWARE.
     SOFTWARE
 
 
-[86]
+[88]
 
 Copyright (c) 2017-2021 isis agora lovecruft. All rights reserved.
 Copyright (c) 2019-2021 DebugSteven. All rights reserved.
@@ -5519,7 +5587,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[87]
+[89]
 
 Copyright (c) 2018-2026 The RustCrypto Project Developers
 
@@ -5548,4 +5616,173 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-Generated by tools/third_party_notices.py from Cargo.lock 303bc46dad2dd255.
+[90]
+
+                   GNU LESSER GENERAL PUBLIC LICENSE
+                       Version 3, 29 June 2007
+
+ Copyright (C) 2007 Free Software Foundation, Inc. <http://fsf.org/>
+ Everyone is permitted to copy and distribute verbatim copies
+ of this license document, but changing it is not allowed.
+
+
+  This version of the GNU Lesser General Public License incorporates
+the terms and conditions of version 3 of the GNU General Public
+License, supplemented by the additional permissions listed below.
+
+  0. Additional Definitions.
+
+  As used herein, "this License" refers to version 3 of the GNU Lesser
+General Public License, and the "GNU GPL" refers to version 3 of the GNU
+General Public License.
+
+  "The Library" refers to a covered work governed by this License,
+other than an Application or a Combined Work as defined below.
+
+  An "Application" is any work that makes use of an interface provided
+by the Library, but which is not otherwise based on the Library.
+Defining a subclass of a class defined by the Library is deemed a mode
+of using an interface provided by the Library.
+
+  A "Combined Work" is a work produced by combining or linking an
+Application with the Library.  The particular version of the Library
+with which the Combined Work was made is also called the "Linked
+Version".
+
+  The "Minimal Corresponding Source" for a Combined Work means the
+Corresponding Source for the Combined Work, excluding any source code
+for portions of the Combined Work that, considered in isolation, are
+based on the Application, and not on the Linked Version.
+
+  The "Corresponding Application Code" for a Combined Work means the
+object code and/or source code for the Application, including any data
+and utility programs needed for reproducing the Combined Work from the
+Application, but excluding the System Libraries of the Combined Work.
+
+  1. Exception to Section 3 of the GNU GPL.
+
+  You may convey a covered work under sections 3 and 4 of this License
+without being bound by section 3 of the GNU GPL.
+
+  2. Conveying Modified Versions.
+
+  If you modify a copy of the Library, and, in your modifications, a
+facility refers to a function or data to be supplied by an Application
+that uses the facility (other than as an argument passed when the
+facility is invoked), then you may convey a copy of the modified
+version:
+
+   a) under this License, provided that you make a good faith effort to
+   ensure that, in the event an Application does not supply the
+   function or data, the facility still operates, and performs
+   whatever part of its purpose remains meaningful, or
+
+   b) under the GNU GPL, with none of the additional permissions of
+   this License applicable to that copy.
+
+  3. Object Code Incorporating Material from Library Header Files.
+
+  The object code form of an Application may incorporate material from
+a header file that is part of the Library.  You may convey such object
+code under terms of your choice, provided that, if the incorporated
+material is not limited to numerical parameters, data structure
+layouts and accessors, or small macros, inline functions and templates
+(ten or fewer lines in length), you do both of the following:
+
+   a) Give prominent notice with each copy of the object code that the
+   Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the object code with a copy of the GNU GPL and this license
+   document.
+
+  4. Combined Works.
+
+  You may convey a Combined Work under terms of your choice that,
+taken together, effectively do not restrict modification of the
+portions of the Library contained in the Combined Work and reverse
+engineering for debugging such modifications, if you also do each of
+the following:
+
+   a) Give prominent notice with each copy of the Combined Work that
+   the Library is used in it and that the Library and its use are
+   covered by this License.
+
+   b) Accompany the Combined Work with a copy of the GNU GPL and this license
+   document.
+
+   c) For a Combined Work that displays copyright notices during
+   execution, include the copyright notice for the Library among
+   these notices, as well as a reference directing the user to the
+   copies of the GNU GPL and this license document.
+
+   d) Do one of the following:
+
+       0) Convey the Minimal Corresponding Source under the terms of this
+       License, and the Corresponding Application Code in a form
+       suitable for, and under terms that permit, the user to
+       recombine or relink the Application with a modified version of
+       the Linked Version to produce a modified Combined Work, in the
+       manner specified by section 6 of the GNU GPL for conveying
+       Corresponding Source.
+
+       1) Use a suitable shared library mechanism for linking with the
+       Library.  A suitable mechanism is one that (a) uses at run time
+       a copy of the Library already present on the user's computer
+       system, and (b) will operate properly with a modified version
+       of the Library that is interface-compatible with the Linked
+       Version.
+
+   e) Provide Installation Information, but only if you would otherwise
+   be required to provide such information under section 6 of the
+   GNU GPL, and only to the extent that such information is
+   necessary to install and execute a modified version of the
+   Combined Work produced by recombining or relinking the
+   Application with a modified version of the Linked Version. (If
+   you use option 4d0, the Installation Information must accompany
+   the Minimal Corresponding Source and Corresponding Application
+   Code. If you use option 4d1, you must provide the Installation
+   Information in the manner specified by section 6 of the GNU GPL
+   for conveying Corresponding Source.)
+
+  5. Combined Libraries.
+
+  You may place library facilities that are a work based on the
+Library side by side in a single library together with other library
+facilities that are not Applications and are not covered by this
+License, and convey such a combined library under terms of your
+choice, if you do both of the following:
+
+   a) Accompany the combined library with a copy of the same work based
+   on the Library, uncombined with any other library facilities,
+   conveyed under the terms of this License.
+
+   b) Give prominent notice with the combined library that part of it
+   is a work based on the Library, and explaining where to find the
+   accompanying uncombined form of the same work.
+
+  6. Revised Versions of the GNU Lesser General Public License.
+
+  The Free Software Foundation may publish revised and/or new versions
+of the GNU Lesser General Public License from time to time. Such new
+versions will be similar in spirit to the present version, but may
+differ in detail to address new problems or concerns.
+
+  Each version is given a distinguishing version number. If the
+Library as you received it specifies that a certain numbered version
+of the GNU Lesser General Public License "or any later version"
+applies to it, you have the option of following the terms and
+conditions either of that published version or of any later version
+published by the Free Software Foundation. If the Library as you
+received it does not specify a version number of the GNU Lesser
+General Public License, you may choose any version of the GNU Lesser
+General Public License ever published by the Free Software Foundation.
+
+  If the Library as you received it specifies that a proxy can decide
+whether future versions of the GNU Lesser General Public License shall
+apply, that proxy's public statement of acceptance of any version is
+permanent authorization for you to choose that version for the
+Library.
+
+
+Generated by tools/third_party_notices.py from Cargo.lock 50130994e3151e88.

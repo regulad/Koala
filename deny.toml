@@ -31,6 +31,9 @@ allow = [
     "MPL-2.0",
     "Unicode-3.0",
     "Unlicense",
+    # ffmpeg-next and ffmpeg-sys-next: as permissive as MIT, and as
+    # compatible (Parker, 2026-11-20).
+    "WTFPL",
     "Zlib",
 ]
 confidence-threshold = 0.93

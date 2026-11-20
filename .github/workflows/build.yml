@@ -37,6 +37,9 @@ jobs:
       # windows-reactor comes from windows-rs's repository, whose history is
       # over 3 GB: git's own fetch is much faster than Cargo's built-in one.
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # ffmpeg-sys-next generates its bindings with bindgen, which loads
+      # libclang: the runner's LLVM has it.
+      LIBCLANG_PATH: C:\Program Files\LLVM\bin
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,14 +50,21 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
           cargo --version
+      # The FFmpeg Koala links, pinned by its SHA-256 (tools/ffmpeg.ps1).
+      - name: FFmpeg
+        shell: pwsh
+        run: ./tools/ffmpeg.ps1
       - name: Build
         run: cargo build --release --locked -p koala
+      # The programs, and FFmpeg's DLLs beside them (koala's build script
+      # puts them there), which are BtbN's and aren't signed here.
       - uses: actions/upload-artifact@v7
         with:
           name: unsigned-programs
           path: |
             target/release/koala.exe
             target/release/koala-tray.exe
+            target/release/*.dll
           if-no-files-found: error
           retention-days: 1
 
@@ -105,5 +115,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: programs
-          path: programs/*.exe
+          path: |
+            programs/*.exe
+            programs/*.dll
           if-no-files-found: error

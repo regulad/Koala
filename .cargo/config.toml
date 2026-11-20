@@ -1,0 +1,3 @@
+[env]
+# The FFmpeg that ffmpeg-sys-next links, as tools/ffmpeg.ps1 fetches it.
+FFMPEG_DIR = { value = "third_party/ffmpeg", relative = true }
