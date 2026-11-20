@@ -578,6 +578,61 @@ adapter):**
   timed out` (`-1007`) and `kCMContinuityCaptureEventConnectionDisconnect`.
   The host must send RTCP back over that path.
 
+## Phase B: the audio never reaches the air (2026-11-19, trial 19)
+
+Trial 17 again, with Warlock 0.2.0's capture of the radio running throughout
+(`warlockctl capture --tx`, all frames) and the iPhone's syslog. (Trial 18
+was voided: scanned before the syslog was attached.)
+
+**The same session:** pair-verify, four streams, the AVC answer accepted,
+`VCAudioTransmitter … audioTxBitrate=907kbps` from 19:51:09, and `stream
+RTCP timed out` at 19:51:21. The microphone stream's iPhone end was its
+`llw0` ULA, `fde7:e5a2:37cd::7`.
+
+**What the radio heard from the iPhone (`76:56:82:58:57:70`):**
+- QoS Data frames to Warlock's MAC under the AWDL BSSID, unprotected,
+  AWDL-encapsulated (Apple's LLC/SNAP), all from its **`awdl0`** address
+  `fe80::7456:82ff:fe58:5770`:
+  - gPTP, UDP 319/320, at TID 6 (voice);
+  - the Rapport TCP streams at TID 0, 41 of those frames as A-MSDUs, which
+    Warlock drops (it takes no A-MSDU);
+  - mDNS and ICMPv6.
+- Not one packet from its `llw0` address, and no UDP to Koala's
+  microphone port, on the channels the radio followed (149, 161, 6). The
+  iPhone's own frames came at 10–80 a second then; 10 ms audio would be 100.
+- 610 RTS frames to Warlock's MAC. No CTS or ACK appears in the capture,
+  from anyone: the chip may not pass them up.
+- Its AWDL frames carry two TLVs Warlock's don't: **17**, the 802.11
+  container (HT/VHT capabilities), and **33**, which Wireshark doesn't know,
+  14 bytes `01 00 00 00 78 79 01 21 86 00 00 00 00 00` in every frame.
+
+**What the iPhone said:**
+- avconferenced's microphone connection to `fe80::605a:37ff:fefb:de77%llw0`
+  port 59866 was `ready channel-flow` on `llw0[802.11]` from 19:51:09; the
+  kernel's `netif flowstats (remove): if llw0 … src fde7:e5a2:37cd::7, dst
+  fe80::605a:37ff:fefb:de77` at the end shows the flow existed.
+- **No LLW peer was attached:** the only `AppleWLANDataPeerManager` LLW line
+  in the trial is `detachAllLLWPeer` (19:50:05, the voided trial's
+  teardown). At 19:51:21: `setInterfaceEnable … llw0 disable`, `Link Down on
+  llw0`.
+- `wifip2pd`: `WiFiInterface<P2PController<AppleIO80211Driver>>[llw0]<76:56:82:58:57:70>`:
+  `llw0` has the AWDL MAC.
+
+**So:** the audio is held on the iPhone, most likely for want of an LLW peer.
+LLW is not a new encapsulation of the AWDL data we already carry; it is a
+separate interface whose peer the iPhone's Wi-Fi stack sets up, and nothing
+Warlock does sets it up.
+
+**Prior art, the 39C3 talk** (Henri Jäger, "Cracking open what makes Apple's
+Low-Latency WiFi so fast", subtitles read 2026-11-19): LLW is standard
+802.11 configured for latency: EDCA access category voice, A-MSDU and
+A-MPDU, an 80 MHz channel (channel 52 in its example), and RSDB, a second
+simultaneous link. avconferenced opens `llw0` (`channel_open`,
+IOSkywalkFamily `setInterfaceEnable`); `wifip2pd` configures it through the
+IO80211 DriverKit's `configureHPPLowLatencyWiFiParameters`. Asked about a
+schedule: "there's a channel sequence … I guess it's the same as AWDL". The
+talk doesn't say how a peer is set up.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -599,10 +654,12 @@ adapter):**
 
 ## Open
 
-1. **`llw0` through Warlock** (trial 17): what the iPhone's `llw0` frames
-   look like on the air, and carrying them both ways. That includes the
-   iPhone's `llw0` address, a ULA (`fdfb:8166:c09a::5`) rather than an EUI-64
-   link-local address.
+1. **`llw0` through Warlock** (trials 17, 19): the iPhone never attaches
+   an LLW peer for Warlock, so no `llw0` frame reaches the air. What makes
+   it attach one: TLV 33, TLV 17 (HT/VHT), something in the AVC or
+   `wifip2pd` negotiation, or a link on another channel (RSDB)? Then
+   carrying its frames both ways, including to its `llw0` ULA
+   (`fde7:e5a2:37cd::7` in trial 19), which isn't derived from its MAC.
 2. **RTCP from the host** within 12 s (SRTCP, cipher suite 7), and how the
    46-byte key splits into master key and salt.
 3. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
