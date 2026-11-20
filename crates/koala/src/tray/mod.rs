@@ -4,10 +4,11 @@
 //! Clicking the icon (either button, or Enter) opens its menu. Reactor opens it
 //! for a right-click; a left click, which it only reports, opens it through
 //! the same message ([`display::open_icon_menu`]):
+//! - "Koala", and a separator;
 //! - the status: "Warlock service unavailable", "Disconnected",
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
-//! - a separator, then About, which opens About Koala ([`about`]).
+//! - a separator, then About, which opens About Koala ([`about`]), and Quit.
 //!
 //! Reactor's menu items are plain text for now, so the status row is the
 //! menu's own size and About has no icon (Parker's choice, 2026-11-20:
@@ -118,6 +119,9 @@ impl Application for Tray {
                     }
                 }
                 Some("about") => context.show_window("about"),
+                // Closes the windows and the icon; dropping the tray then
+                // ends the run, and with it any session.
+                Some("quit") => context.exit(),
                 _ => {}
             },
             // Closed while still trying: the user gave up.
@@ -145,10 +149,13 @@ impl Application for Tray {
         };
         let menu = Menu::new(
             [
+                MenuItem::disabled("koala", "Koala"),
+                MenuItem::separator("separator-name"),
                 MenuItem::disabled("status", status.heading()),
                 connect,
-                MenuItem::separator("separator"),
+                MenuItem::separator("separator-app"),
                 MenuItem::item("about", "About"),
+                MenuItem::item("quit", "Quit"),
             ],
             context.callback(Message::Menu),
         );
