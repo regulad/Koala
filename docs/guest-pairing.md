@@ -633,6 +633,40 @@ IO80211 DriverKit's `configureHPPLowLatencyWiFiParameters`. Asked about a
 schedule: "there's a channel sequence … I guess it's the same as AWDL". The
 talk doesn't say how a peer is set up.
 
+## LLW: what attaches a peer (static analysis, 2026-11-19)
+
+From iOS 27.2.1 (24B156): the IPSW's DriverKit shared cache (`ipsw extract
+--dyld --driverkit`; the Wi-Fi drivers moved out of the kernelcache, which
+has only `IOSkywalkFamily`), `wifip2pd` and the
+`com.apple.DriverKit-AppleBCMWLAN` dext, all unpacked into overture's
+`~/koala-re/re/tmp/llw`. Also minintosh's Big Sur `IO80211Family`, which
+keeps its symbols.
+
+- **LLW peers exist over AWDL as well as NAN:**
+  `ACIAwdlAdapter::add_llw_peer(apple80211_llw_params*, …)` beside
+  `ACINanAdapter::add_llw_peer`, and `start_llw_session`,
+  `AppleWLANInterfaceAWDL::setupLLWPeer(apple80211_llw_params*)`,
+  `AppleWLANLowLatencyInterface::setLLWPeerPktFilter(ether_addr*)`. The driver
+  logs `llwAddPeer success, peerId:%d …` and `Peer … not found in
+  fLocalPeerMacs, not an LLW peer`.
+- **The driver adds one only when told:** `AppleWLAN80211AWDL::setLLW_PARAMS`
+  (`APPLE80211_IOC_LLW_PARAMS`, from user space) leads to `setupLLWPeer`.
+- **`wifip2pd` tells it for a "Continuity Real Time Group" (RTG):**
+  `continuityRealTimeGroupStart`/`Stop`, `rtgID`, `rtgPeersCount`,
+  `realtimeStartRequest`, `AWDL_REALTIME_TRAFFIC_START`, "Continuity Real
+  Time Group RTG Sync Election", "Creating companion low latency interface",
+  and RTG statistics for Sidecar, Universal Control, remote camera and TV
+  remote camera.
+- **In trial 19 none of it started.** `wifip2pd` logged only `Realtime mode
+  updated false` and `AWDL schedule changed in non-RTG mode`; the driver
+  logged no `llwAddPeer`. And `continuitycaptured` (CoreUtils) logged
+  `Register traffic: [fe80::605a:37ff:fefb:de77%llw0]:59866, 0x0 < >`, a
+  traffic registration for Warlock with no flags, beside its session's
+  `Flags 0x2 < LowLatency >`.
+
+So the gate is upstream of the driver: what makes that registration carry
+realtime flags, or `wifip2pd` start a realtime group, for a peer.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
