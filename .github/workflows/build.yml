@@ -1,0 +1,121 @@
+# Builds Koala's programs and signs them with Azure Artifact Signing, as
+# Warlock's build.yml does: koala.exe (the console tool for trials) and
+# koala-tray.exe (the app), signed.
+#
+# Building and signing are separate jobs. Only the signing job can reach the
+# signing account (the `id-token` permission, an environment's secrets), and
+# it runs nothing but GitHub's and Microsoft's actions and a signature check.
+# Nothing built here runs there, so no build script of any dependency is
+# ever where it could mint the token and get something else signed.
+#
+# A `v*` tag signs from the `release` environment, anything else (a run
+# started by hand) from `testing`, which signs with a test certificate.
+# Parker's homelab configuration manages both and their secrets.
+#
+# Koala has no installer yet (PLAN.md), so this stops at the signed
+# programs: packaging, winget's manifests and a GitHub release, as in
+# Warlock's, come with it.
+#
+# Koala builds against Warlock's client crate from a Warlock checkout beside
+# it (Cargo.toml), so Warlock is checked out next to Koala, at the release
+# Cargo.lock has.
+name: Build and sign
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      # The Warlock release whose warlock-client Cargo.lock has.
+      WARLOCK_REF: v0.2.2
+      # windows-reactor comes from windows-rs's repository, whose history is
+      # over 3 GB: git's own fetch is much faster than Cargo's built-in one.
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+    defaults:
+      run:
+        working-directory: Koala
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: Koala
+          persist-credentials: false
+      - uses: actions/checkout@v7
+        with:
+          repository: regulad/Warlock
+          ref: ${{ env.WARLOCK_REF }}
+          path: Warlock
+          persist-credentials: false
+      - name: Rust
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          cargo --version
+      - name: Build
+        run: cargo build --release --locked -p koala
+      - uses: actions/upload-artifact@v7
+        with:
+          name: unsigned-programs
+          path: |
+            Koala/target/release/koala.exe
+            Koala/target/release/koala-tray.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    name: Sign
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 15
+    environment: ${{ startsWith(github.ref, 'refs/tags/v') && 'release' || 'testing' }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: unsigned-programs
+          path: programs
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@v2
+        with:
+          endpoint: ${{ secrets.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ secrets.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: programs
+          files-folder-filter: exe
+      # `testing` signs with a test certificate, whose root Windows doesn't
+      # trust: there a signature may fail on that and nothing else. A
+      # release must be valid. (Tampering would show as HashMismatch.)
+      - name: Check the signatures
+        shell: pwsh
+        env:
+          RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          $bad = 0
+          $files = @(Get-ChildItem programs -Include *.exe -Recurse)
+          if ($files.Count -lt 2) { "expected the two programs, found $($files.Count) files"; exit 1 }
+          foreach ($f in $files) {
+            $s = Get-AuthenticodeSignature $f.FullName
+            $untrustedRoot = $s.Status -eq 'UnknownError' -and $s.StatusMessage -match 'root certificate which is not trusted'
+            $ok = $s.Status -eq 'Valid' -or ($env:RELEASE -ne 'true' -and $untrustedRoot)
+            "$($f.Name): $($s.Status) ($($s.StatusMessage)) signer: $($s.SignerCertificate.Subject); issuer: $($s.SignerCertificate.Issuer); timestamped: $($null -ne $s.TimeStamperCertificate)"
+            if (-not $ok) { $bad++ }
+          }
+          exit $bad
+      - uses: actions/upload-artifact@v7
+        with:
+          name: programs
+          path: programs/*.exe
+          if-no-files-found: error

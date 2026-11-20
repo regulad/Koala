@@ -1,0 +1,42 @@
+# Dependabot keeps Koala's dependencies current, weekly, as Warlock's does:
+#   * the GitHub Actions in .github/workflows/;
+#   * the pre-commit hooks' revisions (.pre-commit-config.yaml).
+#
+# Not the Rust workspace, yet. Dependabot resolves it on its own, without
+# the Warlock checkout beside Koala that warlock-client comes from
+# (Cargo.toml), so its Cargo updates would fail. Its security alerts read
+# Cargo.lock and still cover the Rust dependencies (settings.yml).
+#
+# An update waits until its release is two weeks old (`cooldown`), as
+# PLAN.md asks of every new dependency. Security updates don't wait: the
+# cooldown doesn't apply to them, so review those with care.
+#
+# Dependabot's pull requests run .github/workflows/check.yml: the
+# pre-commit hooks, whose cargo-deny holds them to the licence zone, and
+# the tests. Its label is in .github/settings.yml, which deletes labels it
+# doesn't list.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      pre-commit:
+        patterns: ["*"]

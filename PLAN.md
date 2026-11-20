@@ -19,7 +19,7 @@ The research so far is in Warlock's `docs/`, with Koala's parts in `macos-contin
   There's no manifest yet: Koala has no installer. Its manifests will be written from its package as Warlock's are (`warlock-msi winget`), with these in `Dependencies` → `PackageDependencies`.
 - **Trust path:** impersonate an Apple TV and use its guest QR/PIN pairing. Cloning a same-Apple-Account identity is out.
 - **No new hardware (Parker, 2026-11-18).** There is no Apple TV that can host a guest session here (Continuity Camera needs an Apple TV 4K of the 2nd generation or later, the Sing guest mic the 3rd), so the ground truth is static reverse engineering of the iOS and tvOS 27 images, then trials against the iPhone itself. Available: an iPhone on iOS 27; an Apple TV 4K (1st generation, which can't run tvOS 27) on the LAN, which speaks Rapport (`_companion-link._tcp`) but can't host; a jailbroken 3rd-generation Apple TV (iOS 8); a 2015 MacBook on macOS 11 as an AWDL witness; the RE workspace on the lab Mac `overture` (`~/koala-re`, with `ipsw` and Ghidra) and Ghidra on this PC.
-- **Local until a working prototype (Parker, 2026-11-18).** The code goes to GitHub only once something works; `.github/` (settings, CI, Dependabot, as in Warlock) comes with that push. The repository, [`regulad/Koala`](https://github.com/regulad/Koala), exists already, empty, for its issues (Parker, 2026-11-20).
+- **Local until a working prototype (Parker, 2026-11-18).** The code goes to GitHub only once something works. Its pipeline (`.github/`, "Pipeline" below) is written already and takes effect with that push. The repository, [`regulad/Koala`](https://github.com/regulad/Koala), exists already, empty, for its issues (Parker, 2026-11-20).
 - **Dependencies** must be at least two weeks old, AGPL-compatible (Apache-2.0 is fine here, unlike in Warlock; GPL-2.0-only isn't), and vetted for provenance. `deny.toml` enforces the licences and sources. Age covers transitive crates too: `Cargo.lock` pins older versions where the newest is too young (2026-11-18: bytes 1.12.1, const-oid 0.10.2, crypto-bigint 0.7.10, inout 0.2.5, mio 1.2.4, syn 3.0.9, zeroize 1.9.1). Python test tools are installed with `uv pip install --exclude-newer <date>`. Code with no licence, or under GPL-2.0-only, is read for facts only, never copied.
 - Committed docs and fixtures omit personal identifiers (device names, addresses, account details). Captures stay out of the repository.
 
@@ -84,6 +84,16 @@ Milestones (exit criteria):
   - The tool that made the difference was the iPhone's own log over USB: pymobiledevice3 (GPL-3.0, a tool only) in a venv, `syslog live -ei 'rapportd|ContinuityCapture|…'`.
 - **K3:** the iPhone brought onto AWDL (`_rdNeedsAWDL`), Koala connected to its RDLink server and pair-verified, and a mic-only `com.apple.continuitycapture` session negotiated. Needs more RE first: the control messages, the NSKeyedArchiver configuration, the stream descriptors and the AVConference/SRTP keying.
 - **K4:** the iPhone's microphones appear in Windows as microphones, one each, with stable latency and drift. The repository is published around here.
+
+## Pipeline (2026-11-20, from Warlock's)
+
+- **`.github/workflows/check.yml`:** every pull request and push to master runs the pre-commit hooks over the whole tree, then the tests.
+- **`.github/workflows/build.yml`:** a `v*` tag, or a run started by hand, builds `koala.exe` and `koala-tray.exe`, then a separate job signs them with Azure Artifact Signing, as Warlock's does. A tag signs from the `release` environment, a run by hand from `testing`.
+  - It stops at the signed programs. Packaging, winget's manifests and a GitHub release, as in Warlock's, come with Koala's installer.
+- **Both workflows check Warlock out beside Koala,** at the release whose `warlock-client` Cargo.lock has (`WARLOCK_REF`, now `v0.2.2`; move it with Cargo.lock). They fetch windows-rs's 3 GB history with git's own fetch (`CARGO_NET_GIT_FETCH_WITH_CLI`), the faster one.
+- **`.github/dependabot.yml`:** GitHub Actions and the pre-commit hooks, weekly, after two weeks. Not Cargo yet: Dependabot can't see the Warlock checkout `warlock-client` comes from. Its security alerts read Cargo.lock, so they still cover the Rust dependencies.
+- **`.github/settings.yml`:** the repository's settings and labels, through the Probot Settings app, as Warlock's.
+- **Before the first push** (Parker's homelab configuration, as for Warlock): the Settings app installed on `regulad/Koala`, and the `release` and `testing` environments with the signing secrets.
 
 ## Risks
 
