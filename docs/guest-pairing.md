@@ -667,6 +667,56 @@ keeps its symbols.
 So the gate is upstream of the driver: what makes that registration carry
 realtime flags, or `wifip2pd` start a realtime group, for a peer.
 
+## LLW through a realtime group (2026-11-19, trials 20–21)
+
+The host starts the group. With a Mac or Apple TV model as the host, the
+iPhone registers no realtime traffic of its own and waits for one. Warlock
+now starts it with `POST /v1/realtime {peer}` (Warlock `fbace51`, `ce0c980`):
+a unicast MIF to the iPhone with data path state unicast options
+`0x17000000` and a realtime group TLV (31) whose ID is Warlock's address.
+
+- **Trial 20.**
+  - **The group started.** The iPhone logged
+    `Received UMI from 92:7B:D3:30:B4:FD, with options (0x17000000)` and
+    `startRealTimeGroupSessionWith: Adopt Intiator [92:7B:…] RTGID [92:7B:…]`.
+    It then enabled LLW for Warlock (`configureHPPLlwParams … enable:Yes`),
+    created `llw0`, forced Warlock as RTG master, and moved to a realtime
+    schedule (149 ×6, 6, 6, twice).
+  - **Its frames carried TLV 31 with Warlock's ID** for as long as the group
+    lasted.
+  - **The audio reached the air: 418 frames.** They are QoS data on TID 7,
+    plain RFC 1042 LLC/SNAP on the AWDL BSSID (not AWDL data), carrying UDP
+    from its `llw0` ULA to Warlock's link-local on Koala's microphone port.
+    Warlock's radio ACKed them. Warlock didn't parse them yet.
+  - **Stop and repeats.** The stop UMI (`0x18000000`) ended the group. Each
+    repeated start made the iPhone tear LLW down and rebuild it, so Warlock
+    now sends one and waits for the TLV.
+- **Trial 21.**
+  - **Koala received the microphone stream:** over 1,024 RTP packets
+    (payload type 101, about 1.1 KB, about 100 a second) from
+    `[fd0d:c2f5:169e::9]:52051`.
+  - **The session still ends at 12 s:** `stream RTCP timed out`. Koala
+    sends no RTCP yet.
+  - **Warlock routes the iPhone's `llw0` address to its adapter and sends
+    back as LLW.** No ping got an answer:
+    - Windows chose another adapter's ULA as the source (Tailscale's
+      `fd7a:115c:a1e0::/48`).
+    - Pinned to Warlock's link-local, the pings went out after the session
+      had ended.
+- **Side effect.** While the group lasts, the iPhone leaves its home Wi-Fi
+  ("retro mode", `Entering retro mode … disabling infrastructure Wi-Fi`).
+  The reason is that Warlock truthfully reports no infrastructure network.
+
+Static analysis of the multi-peer case:
+- **Limits.**
+  - An iPhone has one RTG: at most 8 peers, one RTGID (the larger of two
+    proposals wins), one forced master and one LLW peer on AWDL. The last
+    start UMI wins those.
+  - `wifip2pd` refuses a second Continuity Real Time Group peer and any mix
+    of two realtime services.
+- **Repeats.** A repeated start of the same type isn't counted, and the
+  first stop ends it.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -683,19 +733,20 @@ realtime flags, or `wifip2pd` start a realtime group, for a peer.
   2. connect to its `_rdlink._tcp`;
   3. pair-verify;
   4. open a `com.apple.continuitycapture` RemoteDisplay session in mic-only
-     mode;
-  5. negotiate AVConference.
+     mode, and take a Warlock realtime lock on the iPhone (`POST
+     /v1/realtime`) as it starts, for as long as it lasts;
+  5. negotiate AVConference;
+  6. send RTCP to the iPhone's `llw0` address from a socket bound to
+     Warlock's link-local (Windows otherwise picks a ULA of another
+     adapter's).
 
 ## Open
 
-1. **`llw0` through Warlock** (trials 17, 19): the iPhone never attaches
-   an LLW peer for Warlock, so no `llw0` frame reaches the air. What makes
-   it attach one: TLV 33, TLV 17 (HT/VHT), something in the AVC or
-   `wifip2pd` negotiation, or a link on another channel (RSDB)? Then
-   carrying its frames both ways, including to its `llw0` ULA
-   (`fde7:e5a2:37cd::7` in trial 19), which isn't derived from its MAC.
+1. **The way back over LLW:** whether the iPhone takes Warlock's LLW
+   frames (QoS data, TID 7, RFC 1042) on `llw0`. Koala's RTCP is the test.
 2. **RTCP from the host** within 12 s (SRTCP, cipher suite 7), and how the
-   46-byte key splits into master key and salt.
+   46-byte key splits into master key and salt. Now the session's limit
+   (trials 20–21).
 3. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
    Signaling TLVs), or only follow it. Prior art: shairport-sync's NQPTP.
 4. **The audio itself:** SRTP decryption, codec type 19 (4 channels,
@@ -712,7 +763,8 @@ Runs 8–17 settled what was open here before:
 - `_camCap`: the session gets as far as streaming without it;
 - the capture protocol up to the streams;
 - the Sing path (avoided with `_rdsr=1`, trials 16–17);
-- the AVC answer (accepted, trial 17).
+- the AVC answer (accepted, trial 17);
+- `llw0` to Koala: a realtime group started by Warlock (trials 20–21).
 
 ## Reproducing
 
