@@ -151,12 +151,13 @@ fn icon_window() -> Option<HWND> {
 
 const ICON_ID: u32 = 1;
 
-/// Opens the icon's menu as a right-click on it would: Reactor's callback
-/// message (`WM_USER + 1`) as Explorer sends it (`NOTIFYICON_VERSION_4`).
-/// For the tray's preview.
-pub fn open_icon_menu() {
+/// Opens the icon's menu at `at` (by default, the icon) as a right-click on
+/// it would: Reactor's callback message (`WM_USER + 1`, at the pinned
+/// commit) as Explorer sends it (`NOTIFYICON_VERSION_4`). For a left click,
+/// which Reactor otherwise only reports, and the tray's preview.
+pub fn open_icon_menu(at: Option<POINT>) {
     let Some(window) = icon_window() else { return };
-    let at = tray_point().unwrap_or(POINT { x: 0, y: 0 });
+    let at = at.or_else(tray_point).unwrap_or(POINT { x: 0, y: 0 });
     let position = (at.x as u16 as usize) | ((at.y as u16 as usize) << 16);
     unsafe { PostMessageW(window, WM_USER + 1, position, (WM_CONTEXTMENU | ICON_ID << 16) as isize) };
 }

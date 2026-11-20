@@ -1,8 +1,9 @@
 //! `koala-tray`: Koala in the notification area, in WinUI 3 through
 //! windows-rs's Reactor (PLAN.md, "UI").
 //!
-//! The icon's menu (right-click; Reactor gives a left click to
-//! `on_activate`, and can't open the menu from it):
+//! Clicking the icon (either button, or Enter) opens its menu. Reactor opens it
+//! for a right-click; a left click, which it only reports, opens it through
+//! the same message ([`display::open_icon_menu`]):
 //! - the status: "Warlock service unavailable", "Disconnected",
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
@@ -67,6 +68,8 @@ enum Message {
     /// The QR window closed.
     QrClosed,
     TryAgain,
+    /// A left click (or Enter) on the icon, where it was.
+    Activate(ScreenPoint),
 }
 
 struct Tray {
@@ -123,6 +126,10 @@ impl Application for Tray {
                     let _ = self.commands.send(Command::Cancel);
                 }
             }
+            // The same menu as a right-click.
+            Message::Activate(at) => {
+                display::open_icon_menu(Some(windows_sys::Win32::Foundation::POINT { x: at.x, y: at.y }));
+            }
             Message::TryAgain => {
                 let _ = self.commands.send(Command::Connect);
             }
@@ -158,6 +165,7 @@ impl Application for Tray {
                 "tray",
                 NotifyIcon::new(icon(matches!(status, Status::Connected(_))))
                     .tooltip(format!("Koala: {}", status.heading()))
+                    .on_activate(context.callback(Message::Activate))
                     .menu(menu),
             )
     }
@@ -197,7 +205,7 @@ fn preview(what: &str, poster: bridge::Poster, context: &ApplicationContext<Tray
             poster.post(disconnected);
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_millis(2500));
-                display::open_icon_menu();
+                display::open_icon_menu(None);
             });
         }
         "qr" => {
