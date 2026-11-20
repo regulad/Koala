@@ -8,7 +8,8 @@
 //! - the status: "Warlock service unavailable", "Disconnected",
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
-//! - a separator, then About, which opens About Koala ([`about`]), and Quit.
+//! - a separator, then Options (a submenu: "Start on logon", on or off,
+//!   [`startup`]), About, which opens About Koala ([`about`]), and Quit.
 //!
 //! Reactor's menu items are plain text for now, so the status row is the
 //! menu's own size and About has no icon (Parker's choice, 2026-11-20:
@@ -25,6 +26,7 @@ mod controller;
 pub mod display;
 mod glyph;
 mod qr;
+mod startup;
 mod win;
 
 use std::path::PathBuf;
@@ -78,6 +80,8 @@ struct Tray {
     commands: UnboundedSender<Command>,
     _bridge: bridge::Bridge,
     _runtime: tokio::runtime::Runtime,
+    /// Whether Windows will start Koala at logon ([`startup`]).
+    start_on_logon: bool,
 }
 
 impl Application for Tray {
@@ -99,7 +103,17 @@ impl Application for Tray {
                 runtime.spawn(controller::run(receiver, move |view| poster.post(view.clone())));
             }
         }
-        Self { view: View::default(), commands, _bridge: bridge, _runtime: runtime }
+        // Started at logon from somewhere else (Koala moved, or another
+        // build): the entry follows this copy.
+        let start_on_logon = startup::KOALA.enabled();
+        if start_on_logon
+            && let Ok(command) = startup::this_program()
+            && startup::KOALA.command().as_deref() != Some(command.as_str())
+            && let Err(e) = startup::KOALA.set(Some(&command))
+        {
+            println!("koala-tray: start on logon: {e}");
+        }
+        Self { view: View::default(), commands, _bridge: bridge, _runtime: runtime, start_on_logon }
     }
 
     fn update(&mut self, message: Message, context: &ApplicationContext<Self>) {
@@ -122,6 +136,13 @@ impl Application for Tray {
                 // Closes the windows and the icon; dropping the tray then
                 // ends the run, and with it any session.
                 Some("quit") => context.exit(),
+                Some("logon") => {
+                    let command = (!self.start_on_logon).then(startup::this_program).transpose();
+                    if let Err(e) = command.and_then(|c| startup::KOALA.set(c.as_deref())) {
+                        println!("koala-tray: start on logon: {e}");
+                    }
+                    self.start_on_logon = startup::KOALA.enabled();
+                }
                 _ => {}
             },
             // Closed while still trying: the user gave up.
@@ -154,6 +175,13 @@ impl Application for Tray {
                 MenuItem::disabled("status", status.heading()),
                 connect,
                 MenuItem::separator("separator-app"),
+                // Reactor's menus have no checkable items yet: the state is
+                // a check mark in the label.
+                MenuItem::submenu(
+                    "options",
+                    "Options",
+                    [MenuItem::item("logon", if self.start_on_logon { "✓  Start on logon" } else { "Start on logon" })],
+                ),
                 MenuItem::item("about", "About"),
                 MenuItem::item("quit", "Quit"),
             ],
