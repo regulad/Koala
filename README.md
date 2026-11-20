@@ -12,6 +12,19 @@ microphone of its own, which other programs record from.
 **Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
 and where each part stands.
 
+## Build
+
+You need Rust (stable). Warlock comes in as a submodule, for its client
+crate; its own submodules aren't needed.
+
+```text
+git clone https://github.com/regulad/Koala
+cd Koala
+git submodule update --init
+cargo build --release
+cargo test --workspace
+```
+
 ## Licence
 
 Koala is free software, under the GNU Affero General Public License, version 3

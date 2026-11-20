@@ -3,9 +3,8 @@
 # the whole tree, then the tests. Among the hooks, cargo-deny holds every
 # dependency to the licence zone (deny.toml). As Warlock's check.yml does.
 #
-# Koala builds against Warlock's client crate from a Warlock checkout beside
-# it (Cargo.toml), so Warlock is checked out next to Koala, at the release
-# Cargo.lock has: Koala in `Koala/`, Warlock in `Warlock/`.
+# Koala builds against Warlock's client crate from the Warlock submodule
+# (Cargo.toml), so it's checked out too; Warlock's own submodules aren't.
 name: Check
 
 on:
@@ -21,10 +20,6 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
-defaults:
-  run:
-    working-directory: Koala
-
 jobs:
   check:
     name: Hooks and tests
@@ -36,25 +31,16 @@ jobs:
       CARGO_DENY_VERSION: 0.20.2
       CARGO_DENY_SHA256: 975a22143262fd27476d19ee00c7af67978426e40e1dee94eed6bbade1cf87dc
       PRE_COMMIT_VERSION: 4.7.0
-      # The Warlock release whose warlock-client Cargo.lock has.
-      WARLOCK_REF: v0.2.2
       # windows-reactor comes from windows-rs's repository, whose history is
       # over 3 GB: git's own fetch is much faster than Cargo's built-in one.
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
     steps:
       # The tree is LF throughout; Windows runners would check it out CRLF.
       - name: Line endings
-        working-directory: ${{ github.workspace }}
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
         with:
-          path: Koala
-          persist-credentials: false
-      - uses: actions/checkout@v7
-        with:
-          repository: regulad/Warlock
-          ref: ${{ env.WARLOCK_REF }}
-          path: Warlock
+          submodules: true
           persist-credentials: false
       - name: Rust
         run: |

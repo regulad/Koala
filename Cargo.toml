@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/koala", "crates/koala-capture", "crates/koala-pairing", "crates/koala-rapport"]
+# Warlock's crates belong to Warlock's own workspace, not this one.
+exclude = ["third_party/warlock"]
 
 [workspace.package]
 # Koala's one version, which every crate carries: semver, with 0.y.z read as
@@ -17,12 +19,9 @@ koala-capture = { path = "crates/koala-capture", version = "0.0.0" }
 koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
 koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
 # Warlock's API client (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it
-# under the AGPL), from a Warlock checkout beside this one. Not from git yet:
-# Cargo fetches a git dependency's submodules recursively, and devourer pins
-# a reference submodule (reference/rtl8852cu) to a commit that no longer
-# exists. regulad/Koala#2 tracks it (through regulad/Warlock#14 and
-# OpenIPC/devourer#586).
-warlock-client = { path = "../Warlock/crates/warlock-client", version = "0.2.0" }
+# under the AGPL), from the Warlock submodule, which is pinned to a release
+# (`git submodule update --init`; Warlock's own submodules aren't needed).
+warlock-client = { path = "third_party/warlock/crates/warlock-client", version = "0.2.0" }
 
 aes = "0.9.4"
 apple-opack = "1.1.0"

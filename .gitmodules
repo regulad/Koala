@@ -1,0 +1,3 @@
+[submodule "third_party/warlock"]
+	path = third_party/warlock
+	url = https://github.com/regulad/Warlock.git

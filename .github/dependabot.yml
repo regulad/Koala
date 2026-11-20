@@ -2,10 +2,12 @@
 #   * the GitHub Actions in .github/workflows/;
 #   * the pre-commit hooks' revisions (.pre-commit-config.yaml).
 #
-# Not the Rust workspace, yet. Dependabot resolves it on its own, without
-# the Warlock checkout beside Koala that warlock-client comes from
-# (Cargo.toml), so its Cargo updates would fail (#2). Its security alerts
-# read Cargo.lock and still cover the Rust dependencies (settings.yml).
+# Not the Rust workspace: warlock-client comes from a path in the Warlock
+# submodule (Cargo.toml), and Dependabot's Cargo updates can't resolve a
+# path into a submodule (dependabot/dependabot-core#11861). Its security
+# alerts read Cargo.lock and still cover the Rust dependencies
+# (settings.yml). Nor the submodule itself: Dependabot would move it to
+# Warlock's latest commit, and Koala takes Warlock's releases, by hand.
 #
 # An update waits until its release is two weeks old (`cooldown`), as
 # PLAN.md asks of every new dependency. Security updates don't wait: the

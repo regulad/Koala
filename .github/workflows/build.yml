@@ -16,9 +16,8 @@
 # programs: packaging, winget's manifests and a GitHub release, as in
 # Warlock's, come with it.
 #
-# Koala builds against Warlock's client crate from a Warlock checkout beside
-# it (Cargo.toml), so Warlock is checked out next to Koala, at the release
-# Cargo.lock has.
+# Koala builds against Warlock's client crate from the Warlock submodule
+# (Cargo.toml), so it's checked out too; Warlock's own submodules aren't.
 name: Build and sign
 
 on:
@@ -35,24 +34,13 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      # The Warlock release whose warlock-client Cargo.lock has.
-      WARLOCK_REF: v0.2.2
       # windows-reactor comes from windows-rs's repository, whose history is
       # over 3 GB: git's own fetch is much faster than Cargo's built-in one.
       CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-    defaults:
-      run:
-        working-directory: Koala
     steps:
       - uses: actions/checkout@v7
         with:
-          path: Koala
-          persist-credentials: false
-      - uses: actions/checkout@v7
-        with:
-          repository: regulad/Warlock
-          ref: ${{ env.WARLOCK_REF }}
-          path: Warlock
+          submodules: true
           persist-credentials: false
       - name: Rust
         run: |
@@ -65,8 +53,8 @@ jobs:
         with:
           name: unsigned-programs
           path: |
-            Koala/target/release/koala.exe
-            Koala/target/release/koala-tray.exe
+            target/release/koala.exe
+            target/release/koala-tray.exe
           if-no-files-found: error
           retention-days: 1
 

@@ -90,10 +90,10 @@ Milestones (exit criteria):
 - **`.github/workflows/check.yml`:** every pull request and push to master runs the pre-commit hooks over the whole tree, then the tests.
 - **`.github/workflows/build.yml`:** a `v*` tag, or a run started by hand, builds `koala.exe` and `koala-tray.exe`, then a separate job signs them with Azure Artifact Signing, as Warlock's does. A tag signs from the `release` environment, a run by hand from `testing`.
   - It stops at the signed programs. Packaging, winget's manifests and a GitHub release, as in Warlock's, come with Koala's installer.
-- **Both workflows check Warlock out beside Koala,** at the release whose `warlock-client` Cargo.lock has (`WARLOCK_REF`, now `v0.2.2`; move it with Cargo.lock). They fetch windows-rs's 3 GB history with git's own fetch (`CARGO_NET_GIT_FETCH_WITH_CLI`), the faster one.
-- **`.github/dependabot.yml`:** GitHub Actions and the pre-commit hooks, weekly, after two weeks. Not Cargo yet: Dependabot can't see the Warlock checkout `warlock-client` comes from ([#2](https://github.com/regulad/Koala/issues/2): a git dependency on Warlock fails on devourer's dead `reference/rtl8852cu` pin, regulad/Warlock#14, OpenIPC/devourer#586). Its security alerts read Cargo.lock, so they still cover the Rust dependencies.
+- **Warlock is a submodule,** `third_party/warlock`, pinned to the release whose `warlock-client` Koala builds against (now `v0.2.2`); Cargo.toml takes the crate by path from it. Both workflows check it out (`submodules: true`), but not Warlock's own submodules, which only its radio needs. Moving to a new Warlock release is a submodule bump, by hand. They fetch windows-rs's 3 GB history with git's own fetch (`CARGO_NET_GIT_FETCH_WITH_CLI`), the faster one.
+- **`.github/dependabot.yml`:** GitHub Actions and the pre-commit hooks, weekly, after two weeks. Not Cargo: its updates can't resolve a path into a submodule (dependabot/dependabot-core#11861). Its security alerts read Cargo.lock, so they still cover the Rust dependencies.
 - **`.github/settings.yml`:** the repository's settings and labels, through the Probot Settings app, as Warlock's.
-- **Before the first push** (Parker's homelab configuration, as for Warlock): the Settings app installed on `regulad/Koala`, and the `release` and `testing` environments with the signing secrets.
+- **Before the first push** (Parker's homelab configuration, as for Warlock): the Settings app installed on `regulad/Koala`, and the `release` and `testing` environments with the signing secrets (the environments and their secrets are in place, 2026-11-20).
 
 ## Risks
 
