@@ -1,5 +1,5 @@
 # Fetches the FFmpeg that Koala links: libavformat writes the camera's
-# recordings (crates/koala/src/mp4.rs), and libavcodec is there to decode
+# recordings (crates/koala/src/mkv.rs), and libavcodec is there to decode
 # them where Windows can't. A pinned LGPL shared build from BtbN's
 # FFmpeg-Builds (a month-end build, which that project keeps), its SHA-256
 # checked, unpacked to third_party/ffmpeg: bin (the DLLs), include, lib.

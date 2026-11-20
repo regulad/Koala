@@ -768,7 +768,7 @@ Static analysis of the multi-peer case:
 
 ## The camera (2026-11-20, trial 23)
 
-- **The request.** `koala guest --camera trial.mp4` asks for entity 1, the
+- **The request.** `koala guest --camera trial.mkv` asks for entity 1, the
   camera, in place of the microphones: the same QR guest pairing, no
   iCloud pairing. Koala asks for 1920×1080 at 30 fps, and answers the
   iPhone's AVC offer, which has video settings, with them mirrored.
@@ -788,9 +788,11 @@ Static analysis of the multi-peer case:
 - **One IDR picture,** at the start, and none after it. A recording that
   misses it has nothing to start from. Asking for another (an RTCP PLI or
   FIR, RFC 4585 and 5104) is untried.
-- **The recording** is an MP4, HEVC as it came, in `hvc1`, written by
-  FFmpeg's muxer (Koala's `mp4`). Windows plays it with Microsoft's HEVC
-  Video Extensions.
+- **The recording** is a Matroska file, HEVC as it came, written by
+  FFmpeg's muxer (Koala's `mkv`) and flushed picture by picture. Windows
+  plays it with Microsoft's HEVC Video Extensions. Not MP4: trial 24's, cut
+  off by a Ctrl+C, had 87 s of pictures and no index, and didn't play
+  until rebuilt; a Matroska file reads up to wherever it stops.
 - **Before it worked,** three scans failed although the iPhone found
   Koala's `_rdlink` instance. Its rapportd had a session stuck since that
   morning: on each scan it checked `NearbyActionV2` against another device

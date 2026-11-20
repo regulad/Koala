@@ -1,14 +1,13 @@
 //! The camera's video, recorded: `koala guest --camera PATH` asks the
 //! iPhone for its camera (entity 1) in place of its microphone, and writes
-//! what it sends to PATH as an MP4: HEVC as it arrives, not re-encoded
-//! (`koala_capture::video`), in FFmpeg's MP4 muxer (`crate::mp4`). Windows
-//! plays it with Microsoft's HEVC Video Extensions. The iPhone's AVC offer is
-//! kept beside it, as `PATH.offer.bplist`.
+//! what it sends to PATH as a Matroska file: HEVC as it arrives, not
+//! re-encoded (`koala_capture::video`), in FFmpeg's Matroska muxer
+//! (`crate::mkv`). Windows plays it with Microsoft's HEVC Video Extensions.
+//! The iPhone's AVC offer is kept beside it, as `PATH.offer.bplist`.
 //!
 //! The recording starts at the first picture a decoder can start at: the
-//! iPhone sent one, at the start of the session, in trial 23. It's indexed
-//! when the session ends; a recording Koala didn't get to end has no index,
-//! and doesn't play.
+//! iPhone sent one, at the start of the session, in trials 23 and 24. A
+//! recording cut short, Koala killed, still plays to where it stopped.
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -18,7 +17,7 @@ use std::sync::OnceLock;
 use koala_capture::srtp;
 use koala_capture::video::{self, AccessUnit, Depacketizer, nal, nal_type};
 
-use crate::mp4::Mp4Writer;
+use crate::mkv::MkvWriter;
 
 /// Where `--camera` records the video, if anywhere: also what makes the
 /// session the camera's.
@@ -29,7 +28,7 @@ pub struct Recording {
     path: Option<PathBuf>,
     /// Whether the recording is still to start, at the first keyframe.
     waiting: bool,
-    mp4: Option<Mp4Writer>,
+    recording: Option<MkvWriter>,
     depacketizer: Depacketizer,
     /// The latest parameter sets: VPS, SPS, PPS.
     parameters: [Option<Vec<u8>>; 3],
@@ -62,7 +61,7 @@ impl Recording {
         Self {
             path,
             waiting,
-            mp4: None,
+            recording: None,
             depacketizer: Depacketizer::default(),
             parameters: [None, None, None],
             packets: 0,
@@ -78,7 +77,7 @@ impl Recording {
         self.packets += 1;
         self.bytes += rtp.len() as u64;
         *self.payload_types.entry(rtp[1] & 0x7f).or_default() += 1;
-        if !self.waiting && self.mp4.is_none() {
+        if !self.waiting && self.recording.is_none() {
             return;
         }
         let seq = u16::from_be_bytes([rtp[2], rtp[3]]);
@@ -97,26 +96,27 @@ impl Recording {
                 Some(nal::PPS) => 2,
                 _ => continue,
             };
-            if self.mp4.is_some() && self.parameters[slot].as_ref().is_some_and(|p| p != n) {
+            if self.recording.is_some() && self.parameters[slot].as_ref().is_some_and(|p| p != n) {
                 println!("camera: the stream's parameter sets changed; the recording keeps its first");
             }
             self.parameters[slot] = Some(n.clone());
         }
-        if self.mp4.is_none() && !self.start(&unit) {
+        if self.recording.is_none() && !self.start(&unit) {
             self.skipped += 1;
             if self.skipped == 1 {
                 println!("camera: waiting for a picture to start the recording at");
             }
             return;
         }
-        let Some(mp4) = &mut self.mp4 else { return };
-        if let Err(e) = mp4.write_sample(unit.timestamp, unit.nals.iter().map(Vec::as_slice), unit.is_keyframe()) {
+        let Some(recording) = &mut self.recording else { return };
+        if let Err(e) = recording.write_sample(unit.timestamp, unit.nals.iter().map(Vec::as_slice), unit.is_keyframe())
+        {
             println!("camera: writing the recording: {e}; it stops here");
-            self.mp4 = None;
+            self.recording = None;
         }
     }
 
-    /// Starts the MP4 at a keyframe, if this is one and the parameter sets
+    /// Starts the recording at a keyframe, if this is one and the parameter sets
     /// have come.
     fn start(&mut self, unit: &AccessUnit) -> bool {
         let [Some(vps), Some(sps), Some(pps)] = &self.parameters else { return false };
@@ -125,12 +125,12 @@ impl Recording {
         }
         let Some(path) = self.path.as_ref().filter(|_| self.waiting) else { return false };
         self.waiting = false;
-        match Mp4Writer::create(path, video::CLOCK_RATE, vps, sps, pps) {
-            Ok(mp4) => {
+        match MkvWriter::create(path, video::CLOCK_RATE, vps, sps, pps) {
+            Ok(recording) => {
                 if self.skipped > 0 {
                     println!("camera: recording from here, {} pictures in", self.skipped);
                 }
-                self.mp4 = Some(mp4);
+                self.recording = Some(recording);
                 true
             }
             Err(e) => {
@@ -141,7 +141,7 @@ impl Recording {
     }
 
     pub fn summary(&self) -> String {
-        let pictures = self.mp4.as_ref().map_or(0, Mp4Writer::samples);
+        let pictures = self.recording.as_ref().map_or(0, MkvWriter::samples);
         format!(
             "video: {} packets, {} KB, {pictures} pictures recorded, {} packets lost, payload types {:?}",
             self.packets,
@@ -159,14 +159,14 @@ impl Drop for Recording {
             self.picture(unit);
         }
         let Some(path) = &self.path else { return };
-        let Some(mp4) = self.mp4.take() else {
+        let Some(recording) = self.recording.take() else {
             if self.waiting {
                 println!("camera: no picture to start at arrived; {} is empty", path.display());
             }
             return;
         };
-        let (pictures, seconds) = (mp4.samples(), mp4.seconds());
-        match mp4.finish() {
+        let (pictures, seconds) = (recording.samples(), recording.seconds());
+        match recording.finish() {
             Ok(_) => println!("camera: {pictures} pictures, {seconds:.1} s, written to {}", path.display()),
             Err(e) => println!("camera: finishing {}: {e}", path.display()),
         }
@@ -204,15 +204,15 @@ mod tests {
 
     /// A trial's camera packets, recorded by an earlier Koala (each
     /// decrypted RTP packet after its length, a big-endian u16), made into
-    /// an MP4: `KOALA_CAMERA_DUMP=trial.rtp cargo test -- --ignored`, then
-    /// check `trial.rtp.mp4` with ffprobe or a player.
+    /// a recording: `KOALA_CAMERA_DUMP=trial.rtp cargo test -- --ignored`,
+    /// then check `trial.rtp.mkv` with ffprobe or a player.
     #[test]
     #[ignore = "needs a trial's packets"]
-    fn a_trials_packets_make_an_mp4() {
+    fn a_trials_packets_make_a_recording() {
         let Some(dump) = std::env::var_os("KOALA_CAMERA_DUMP").map(PathBuf::from) else { return };
         let data = std::fs::read(&dump).unwrap();
         let mut out = dump.into_os_string();
-        out.push(".mp4");
+        out.push(".mkv");
         let out = PathBuf::from(out);
         let mut camera = Recording::to(Some(out.clone()), true);
         let mut rest = &data[..];
@@ -221,7 +221,7 @@ mod tests {
             camera.packet(&tail[..len]);
             rest = &tail[len..];
         }
-        assert!(camera.mp4.as_ref().is_some_and(|m| m.samples() > 0));
+        assert!(camera.recording.as_ref().is_some_and(|m| m.samples() > 0));
         drop(camera);
         assert!(std::fs::metadata(&out).unwrap().len() > 0);
     }

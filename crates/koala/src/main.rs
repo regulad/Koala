@@ -18,7 +18,7 @@ use koala::{camera, guest, mic};
 /// How long the trial follows a capture session, unless `--session` says.
 const SESSION_TIME: Duration = Duration::from_secs(120);
 const USAGE: &str = "usage: koala guest [SECONDS to wait, default 600] [--session SECONDS, default 120] \
-                     [--mic-wav PATH | --camera PATH.mp4]";
+                     [--mic-wav PATH | --camera PATH.mkv]";
 
 /// Takes `flag PATH` out of `args`: the PATH, if the flag is there.
 fn take_path(args: &mut Vec<String>, flag: &str) -> Option<std::path::PathBuf> {
@@ -40,7 +40,7 @@ async fn main() {
         let _ = mic::RECORD.set(path);
     }
     // `--camera PATH`: ask for the camera in place of the microphone, and
-    // record its video to PATH, an MP4 (`koala::camera`).
+    // record its video to PATH, a Matroska file (`koala::camera`).
     if let Some(path) = take_path(&mut args, "--camera") {
         let _ = camera::RECORD.set(path);
     }
