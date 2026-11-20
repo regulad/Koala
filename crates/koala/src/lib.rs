@@ -10,6 +10,7 @@
 //! and Administrator rights or membership of `warlock-users`.
 
 mod ble;
+pub mod camera;
 pub mod capture;
 mod dnssd;
 pub mod guest;

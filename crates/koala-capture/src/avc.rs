@@ -25,6 +25,7 @@ pub mod blob {
     pub const ALLOW_DYNAMIC_MAX_BITRATE: u32 = 1;
     pub const ALLOWS_CONTENTS_CHANGE_WITH_ASPECT_PRESERVATION: u32 = 2;
     pub const AUDIO_SETTINGS: u32 = 3;
+    pub const VIDEO_SETTINGS: u32 = 4;
     pub const USER_AGENT: u32 = 6;
     pub const BASEBAND_CODEC_SAMPLE_RATE: u32 = 8;
     /// Repeated: `{1 configuration, 2 maxBandwidth, 3 configurationExtension}`.
@@ -43,6 +44,28 @@ pub mod audio {
     pub const PAYLOAD_FLAGS: u32 = 4;
     pub const SECONDARY_FLAGS: u32 = 5;
     pub const USE_SBR: u32 = 6;
+}
+
+/// `VCMediaNegotiationBlobVideoSettings`'s fields (its `writeTo:`), for the
+/// camera.
+pub mod video {
+    pub const RTP_SSRC: u32 = 1;
+    pub const ALLOW_RTCP_FB: u32 = 2;
+    /// Repeated: the payloads offered, each with its rule collections
+    /// (`VCMediaNegotiationBlobVideoRuleCollection`: 1 transport, 2
+    /// operation, 3 formats, 4 preferred format, 5 and 6 their extensions).
+    pub const PAYLOAD_COLLECTIONS: u32 = 3;
+    pub const CUSTOM_WIDTH: u32 = 4;
+    pub const CUSTOM_HEIGHT: u32 = 5;
+    pub const TILES_PER_FRAME: u32 = 6;
+    pub const LTRP_ENABLED: u32 = 7;
+    pub const PIXEL_FORMATS: u32 = 8;
+    pub const HDR_MODES_SUPPORTED: u32 = 9;
+    pub const FEC_ENABLED: u32 = 10;
+    pub const RTX_ENABLED: u32 = 11;
+    pub const BLACK_FRAME_ON_CLEAR_SCREEN: u32 = 12;
+    pub const FOVEATION_SUPPORTED: u32 = 13;
+    pub const INTERLEAVED_ENCODING: u32 = 14;
 }
 
 /// `VCCallInfoBlob`'s fields: the endpoint info, sent uncompressed.
@@ -190,6 +213,40 @@ impl Proto {
         }
     }
 
+    /// Every field, one a line, nested messages indented, for logs: bytes
+    /// that parse as a message are shown as one, printable ones as text,
+    /// anything else as hex.
+    pub fn describe(&self) -> String {
+        let mut out = String::new();
+        self.describe_into(&mut out, 0);
+        out
+    }
+
+    fn describe_into(&self, out: &mut String, depth: usize) {
+        let pad = "  ".repeat(depth);
+        for (number, field) in &self.0 {
+            match field {
+                Field::Varint(v) => out.push_str(&format!("{pad}{number}: {v}\n")),
+                Field::Fixed64(v) => out.push_str(&format!("{pad}{number}: {v:#018x} (64-bit)\n")),
+                Field::Fixed32(v) => out.push_str(&format!("{pad}{number}: {v:#010x} (32-bit)\n")),
+                Field::Bytes(b) => match (std::str::from_utf8(b), Proto::parse(b)) {
+                    (Ok(s), _) if !s.is_empty() && s.chars().all(|c| !c.is_control()) => {
+                        out.push_str(&format!("{pad}{number}: {s:?}\n"))
+                    }
+                    (_, Some(inner)) if !b.is_empty() && inner.0.iter().all(|(n, _)| *n < 64) => {
+                        out.push_str(&format!("{pad}{number}: {{\n"));
+                        inner.describe_into(out, depth + 1);
+                        out.push_str(&format!("{pad}}}\n"));
+                    }
+                    _ => {
+                        let hex: String = b.iter().map(|x| format!("{x:02x}")).collect();
+                        out.push_str(&format!("{pad}{number}: 0x{hex}\n"));
+                    }
+                },
+            }
+        }
+    }
+
     /// Sets a field: replaces its first occurrence (and drops any others),
     /// or adds it in field-number order, as protobuf writers emit them.
     pub fn with(mut self, number: u32, field: Field) -> Self {
@@ -280,6 +337,16 @@ impl Offer {
         self.blob.message(blob::AUDIO_SETTINGS)
     }
 
+    /// The camera's settings, in a camera's offer.
+    pub fn video(&self) -> Option<Proto> {
+        self.blob.message(blob::VIDEO_SETTINGS)
+    }
+
+    /// The camera's settings, for a log.
+    pub fn describe_video(&self) -> String {
+        self.video().map_or_else(|| "none".into(), |v| v.describe())
+    }
+
     /// The iPhone's RTP SSRC.
     pub fn ssrc(&self) -> Option<u32> {
         self.audio()?.varint(audio::RTP_SSRC).and_then(|v| u32::try_from(v).ok())
@@ -314,24 +381,35 @@ pub struct AnswerSettings<'a> {
 /// The host's answer to `offer`.
 ///
 /// The media blob mirrors the offer's (the user agent, the bandwidth
-/// settings, the versions), since both ends run the same AVConference. It
-/// has its own audio settings (`settings.ssrc`, `settings.payload` alone in
-/// `payloadFlags`, no secondary payloads) and the time. The call info
-/// mirrors the iPhone's, with the host's model and build. An offer without
-/// call info is answered with the bare compressed blob, as tvOS does.
+/// settings, the versions), since both ends run the same AVConference, with
+/// the time. The call info mirrors the iPhone's, with the host's model and
+/// build. An offer without call info is answered with the bare compressed
+/// blob, as tvOS does.
+///
+/// For the microphone, the blob has the host's own audio settings
+/// (`settings.ssrc`, `settings.payload` alone in `payloadFlags`, no
+/// secondary payloads). For the camera (an offer with video settings), its
+/// video settings mirror the offer's with the host's SSRC: the host takes
+/// whatever the iPhone offers. (Which payload that leaves is for a trial to
+/// show.)
 pub fn answer(offer: &Offer, settings: &AnswerSettings) -> Result<Vec<u8>, AvcError> {
-    let flag = payload_flag(settings.payload).unwrap_or(0);
-    let audio = offer
-        .audio()
-        .unwrap_or_default()
-        .with(audio::RTP_SSRC, Field::Varint(u64::from(settings.ssrc)))
-        .with(audio::PAYLOAD_FLAGS, Field::Varint(u64::from(flag)))
-        .with(audio::SECONDARY_FLAGS, Field::Varint(0));
-    let blob = offer
-        .blob
-        .clone()
-        .with(blob::AUDIO_SETTINGS, Field::Bytes(audio.encode()))
-        .with(blob::NTP_TIME, Field::Varint(settings.ntp_time));
+    let blob = match offer.video() {
+        Some(video) => {
+            let video = video.with(video::RTP_SSRC, Field::Varint(u64::from(settings.ssrc)));
+            offer.blob.clone().with(blob::VIDEO_SETTINGS, Field::Bytes(video.encode()))
+        }
+        None => {
+            let flag = payload_flag(settings.payload).unwrap_or(0);
+            let audio = offer
+                .audio()
+                .unwrap_or_default()
+                .with(audio::RTP_SSRC, Field::Varint(u64::from(settings.ssrc)))
+                .with(audio::PAYLOAD_FLAGS, Field::Varint(u64::from(flag)))
+                .with(audio::SECONDARY_FLAGS, Field::Varint(0));
+            offer.blob.clone().with(blob::AUDIO_SETTINGS, Field::Bytes(audio.encode()))
+        }
+    };
+    let blob = blob.with(blob::NTP_TIME, Field::Varint(settings.ntp_time));
     let compressed = compress(&blob.encode());
     let Some(endpoint) = &offer.endpoint else { return Ok(compressed) };
     let info = endpoint
@@ -417,6 +495,36 @@ mod tests {
         assert_eq!(info.string(call_info::DEVICE_TYPE), Some("AppleTV14,1"));
         assert_eq!(info.string(call_info::OS_VERSION), Some("24K122"));
         assert_eq!(info.string(call_info::FRAMEWORK_VERSION), Some("2260.15.1"));
+    }
+
+    #[test]
+    fn a_camera_offer_is_answered_with_its_own_video_settings() {
+        // A camera's offer, made up: video settings with the iPhone's SSRC
+        // and one payload collection.
+        let collection = Proto(vec![(1, Field::Varint(100)), (2, Field::Bytes(vec![0x08, 0x01]))]);
+        let video = Proto(vec![
+            (video::RTP_SSRC, Field::Varint(42)),
+            (video::PAYLOAD_COLLECTIONS, Field::Bytes(collection.encode())),
+        ]);
+        let blob =
+            Proto(vec![(blob::VIDEO_SETTINGS, Field::Bytes(video.encode())), (blob::BLOB_VERSION, Field::Varint(2))]);
+        let mut dict = plist::Dictionary::new();
+        dict.insert(MODE.into(), plist::Value::Integer(3.into()));
+        dict.insert(MEDIA_BLOB.into(), plist::Value::Data(compress(&blob.encode())));
+        let info = Proto(vec![(call_info::DEVICE_TYPE, Field::Bytes(b"iPhone18,1".to_vec()))]);
+        dict.insert(ENDPOINT_INFO.into(), plist::Value::Data(info.encode()));
+        let mut bytes = Vec::new();
+        plist::Value::Dictionary(dict).to_writer_binary(&mut bytes).unwrap();
+        let offer = Offer::parse(&bytes).unwrap();
+        assert!(offer.video().is_some());
+        assert!(offer.describe_video().contains("3: {"));
+
+        let settings = AnswerSettings { payload: 101, ssrc: 7, ntp_time: 1, device_type: "x", os_version: "y" };
+        let back = Offer::parse(&answer(&offer, &settings).unwrap()).unwrap();
+        let video = back.video().unwrap();
+        assert_eq!(video.varint(video::RTP_SSRC), Some(7));
+        assert_eq!(video.get(video::PAYLOAD_COLLECTIONS), Some(&Field::Bytes(collection.encode())));
+        assert!(back.audio().is_none(), "no audio settings in a camera's answer");
     }
 
     #[test]

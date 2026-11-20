@@ -2,7 +2,7 @@
 //! K2 trial:
 //!
 //! ```text
-//! koala guest [SECONDS] [--mic-wav PATH]
+//! koala guest [SECONDS] [--mic-wav PATH | --camera PATH]
 //! ```
 //!
 //! It plays an Apple TV offering guest pairing (`docs/guest-pairing.md`):
@@ -13,29 +13,41 @@
 
 use std::time::Duration;
 
-use koala::{guest, mic};
+use koala::{camera, guest, mic};
 
 /// How long the trial follows a capture session.
 const SESSION_TIME: Duration = Duration::from_secs(120);
+const USAGE: &str = "usage: koala guest [SECONDS to wait, default 600] [--mic-wav PATH | --camera PATH]";
+
+/// Takes `flag PATH` out of `args`: the PATH, if the flag is there.
+fn take_path(args: &mut Vec<String>, flag: &str) -> Option<std::path::PathBuf> {
+    let at = args.iter().position(|a| a == flag)?;
+    let Some(path) = args.get(at + 1).cloned() else {
+        eprintln!("{USAGE}");
+        std::process::exit(2);
+    };
+    args.drain(at..at + 2);
+    Some(path.into())
+}
 
 #[tokio::main]
 async fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     // `--mic-wav PATH`: record each of the iPhone's microphones to a WAV of
     // its own, named from PATH (`trial.wav` gives `trial-back.wav`, …).
-    if let Some(at) = args.iter().position(|a| a == "--mic-wav") {
-        let Some(path) = args.get(at + 1).cloned() else {
-            eprintln!("usage: koala guest [SECONDS] [--mic-wav PATH]");
-            std::process::exit(2);
-        };
-        let _ = mic::RECORD.set(path.into());
-        args.drain(at..at + 2);
+    if let Some(path) = take_path(&mut args, "--mic-wav") {
+        let _ = mic::RECORD.set(path);
+    }
+    // `--camera PATH`: ask for the camera in place of the microphone, and
+    // record its packets to PATH (`koala::camera`).
+    if let Some(path) = take_path(&mut args, "--camera") {
+        let _ = camera::RECORD.set(path);
     }
     let seconds = match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["guest"] => 600,
         ["guest", seconds] if seconds.parse::<u64>().is_ok() => seconds.parse().unwrap(),
         _ => {
-            eprintln!("usage: koala guest [SECONDS to wait, default 600] [--mic-wav PATH]");
+            eprintln!("{USAGE}");
             std::process::exit(2);
         }
     };

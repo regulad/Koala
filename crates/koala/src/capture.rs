@@ -7,7 +7,7 @@
 //! Rapport connections of their own, which the iPhone opens to Koala once it
 //! has the answer; the microphone gets a UDP path, where its media arrives.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::{SocketAddr, SocketAddrV6};
 use std::time::{Duration, Instant};
 
@@ -15,8 +15,8 @@ use apple_opack::Value;
 use koala_capture::avc::{AnswerSettings, Offer, answer, ntp_now};
 use koala_capture::rtcp::{self, ReceiverStats};
 use koala_capture::session::{
-    ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, control, message, session_start,
-    start_stream, stream as name, stream_activated, stream_announce,
+    ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, StreamFormat, control, message,
+    session_start, start_stream, stream as name, stream_activated, stream_announce,
 };
 use koala_capture::srtp::{self, Rollover};
 use koala_capture::streams::{
@@ -32,6 +32,7 @@ use tokio::net::{TcpListener, TcpStream, UdpSocket};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
 
+use crate::camera::{self, VideoDump};
 use crate::guest::{Event, Report};
 use crate::mic::{Microphone, Model};
 
@@ -63,6 +64,9 @@ const RTCP_INTERVAL: Duration = Duration::from_secs(1);
 /// The microphone's RTP clock: its timestamps advance 480 per 10 ms packet
 /// (trial 21).
 const MIC_CLOCK_RATE: u32 = 48_000;
+/// The camera's RTP clock: RTP video's usual 90 kHz, until a trial shows
+/// otherwise.
+const VIDEO_CLOCK_RATE: u32 = 90_000;
 
 /// The session on the iPhone's RDLink listener at `iphone`, followed for
 /// `limit` or until it ends. `info` is Koala's `_systemInfo` content for
@@ -105,12 +109,18 @@ pub async fn run(
     // Koala's SSRC, for the AVC answer and its RTCP alike.
     let mut ssrc = [0u8; 4];
     crate::random(&mut ssrc);
+    // `--camera` asks for the camera in place of the microphone.
+    let configuration = if camera::RECORD.get().is_some() {
+        Configuration::camera(session_id, 1, StreamFormat::hd_1080p30())
+    } else {
+        Configuration::microphone(session_id, 1)
+    };
     let mut session = Session {
         connection,
         local,
         ssrc: u32::from_be_bytes(ssrc),
         model: Model::default(),
-        configuration: Configuration::microphone(session_id, 1),
+        configuration,
         started: false,
         activated: BTreeSet::new(),
         start_command: None,
@@ -176,8 +186,9 @@ impl Session {
                 println!("capture: session event {kind:?}: {:?}", message.content);
                 // Started: announce each stream again, as a tvOS host does.
                 if kind == Some(message::SESSION_STARTED) {
+                    let media_stream = self.configuration.media_stream();
                     for (stream, media) in
-                        [(name::CONTROL, false), (name::COMMAND, false), (name::DATA, false), (name::MICROPHONE, true)]
+                        [(name::CONTROL, false), (name::COMMAND, false), (name::DATA, false), (media_stream, true)]
                     {
                         self.event(SESSION_EVENT, stream_announce(stream, media)).await?;
                     }
@@ -332,7 +343,9 @@ async fn rapport_stream(
 /// Koala's answer to the iPhone's AVConference offer (Control selector 2,
 /// `[entity, offer]`), as the stream event's content: selector 2 again, with
 /// `[entity, answer]`. `None` for any other Control event. Keeps the
-/// iPhone's model, which names its microphones.
+/// iPhone's model, which names its microphones. A camera's offer (one with
+/// video settings) is answered with its own video settings, and kept beside
+/// the recording.
 fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
     if content.get(SELECTOR).and_then(Value::as_u64) != Some(control::AVC_NEGOTIATION) {
         return None;
@@ -347,35 +360,98 @@ fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
         return None;
     };
     let offer = Offer::parse(data).map_err(|e| println!("capture: the AVC offer: {e}")).ok()?;
-    let offered = offer.payloads();
-    println!(
-        "capture: AVC offer for entity {entity}: mode {:?}, payloads {offered:?}, the iPhone's SSRC {:?}, model {:?}",
-        offer.mode,
-        offer.ssrc(),
-        offer.model()
-    );
     if let Some(m) = offer.model() {
         let _ = model.set(m.to_owned());
     }
-    let wanted = std::env::var("KOALA_AVC_PAYLOAD").ok().and_then(|p| p.parse::<u8>().ok());
-    let Some(payload) = wanted.into_iter().chain(PAYLOADS).find(|p| offered.contains(p)) else {
-        println!("capture: none of the payloads Koala answers with was offered");
-        return None;
+    let payload = if offer.video().is_some() {
+        camera::save_offer(data);
+        println!(
+            "capture: AVC offer for entity {entity}, the camera: mode {:?}, model {:?}, video settings {}",
+            offer.mode,
+            offer.model(),
+            offer.describe_video()
+        );
+        // Unused: the camera's answer mirrors its video settings.
+        0
+    } else {
+        let offered = offer.payloads();
+        println!(
+            "capture: AVC offer for entity {entity}: mode {:?}, payloads {offered:?}, the iPhone's SSRC {:?}, model {:?}",
+            offer.mode,
+            offer.ssrc(),
+            offer.model()
+        );
+        let wanted = std::env::var("KOALA_AVC_PAYLOAD").ok().and_then(|p| p.parse::<u8>().ok());
+        let Some(payload) = wanted.into_iter().chain(PAYLOADS).find(|p| offered.contains(p)) else {
+            println!("capture: none of the payloads Koala answers with was offered");
+            return None;
+        };
+        payload
     };
     let settings = AnswerSettings { payload, ssrc, ntp_time: ntp_now(), device_type: MODEL, os_version: OS_BUILD };
     let bytes = answer(&offer, &settings).map_err(|e| println!("capture: the AVC answer: {e}")).ok()?;
-    println!("capture: AVC answer: payload {payload}, Koala's SSRC {:#010x}, {} bytes", settings.ssrc, bytes.len());
+    let chosen =
+        if offer.video().is_some() { "the camera's settings mirrored".into() } else { format!("payload {payload}") };
+    println!("capture: AVC answer: {chosen}, Koala's SSRC {:#010x}, {} bytes", settings.ssrc, bytes.len());
     Some(dict(vec![
         (SELECTOR, Value::int(control::AVC_NEGOTIATION)),
         (ARGS, Value::Array(vec![Value::int(entity), Value::Bytes(bytes)])),
     ]))
 }
 
-/// The microphone's UDP path. Verifies and decrypts the iPhone's SRTP and
+/// What a media stream's packets go to.
+enum Media {
+    Microphone(Microphone),
+    Camera(VideoDump),
+}
+
+impl Media {
+    fn for_stream(stream: &str, model: Model) -> Self {
+        if stream == name::DEFAULT_VIDEO {
+            Self::Camera(VideoDump::open())
+        } else {
+            Self::Microphone(Microphone::new(Microphone::output(), model))
+        }
+    }
+
+    fn clock_rate(&self) -> u32 {
+        match self {
+            Self::Microphone(_) => MIC_CLOCK_RATE,
+            Self::Camera(_) => VIDEO_CLOCK_RATE,
+        }
+    }
+
+    /// One decrypted RTP packet. True for the first that makes media.
+    fn packet(&mut self, seq: u16, clear: &[u8]) -> bool {
+        match self {
+            Self::Microphone(mic) => {
+                let header = srtp::rtp_header_len(clear).unwrap_or(clear.len());
+                let before = mic.decoded;
+                mic.packet(seq, &clear[header..]);
+                before == 0 && mic.decoded == 1
+            }
+            Self::Camera(video) => {
+                video.packet(clear);
+                video.packets == 1
+            }
+        }
+    }
+
+    fn summary(&self) -> String {
+        match self {
+            Self::Microphone(mic) => {
+                format!("audio: {} decoded, {} concealed, {} errors", mic.decoded, mic.concealed, mic.errors)
+            }
+            Self::Camera(video) => video.summary(),
+        }
+    }
+}
+
+/// A media stream's UDP path. Verifies and decrypts the iPhone's SRTP and
 /// keeps receiver statistics on it, reads its SRTCP sender reports, and
 /// answers once a second with an SRTCP receiver report, without which the
 /// iPhone ends the session at 12 s. RTP and RTCP share the port, both ways.
-/// The first audio decoded is reported as [`Event::Streaming`].
+/// The first media is reported as [`Event::Streaming`].
 /// The reports leave from this socket, bound to Warlock's link-local
 /// address: left to choose, Windows sent to the iPhone's `llw0` address
 /// from another adapter's ULA (trial 21).
@@ -393,15 +469,16 @@ async fn udp_stream(
     let mut reports_out = 0u32;
     let mut peer: Option<SocketAddr> = None;
     let mut stats: Option<ReceiverStats> = None;
-    let mut rollover = Rollover::default();
-    let mut mic = Microphone::new(Microphone::output(), model);
+    // Each SSRC's sequence numbers roll over on their own.
+    let mut rollovers: BTreeMap<u32, Rollover> = BTreeMap::new();
+    let mut media = Media::for_stream(&stream, model);
     let mut tick = tokio::time::interval(RTCP_INTERVAL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {
         tokio::select! {
             // The session is over: so are its reports, and the recording.
             _ = &mut stop => {
-                return println!("capture: stream {stream} closed: audio: {} decoded, {} concealed, {} errors", mic.decoded, mic.concealed, mic.errors);
+                return println!("capture: stream {stream} closed: {}", media.summary());
             }
             received = socket.recv_from(&mut buffer) => {
                 let (len, from) = match received {
@@ -434,19 +511,24 @@ async fn udp_stream(
                 let seq = u16::from_be_bytes([data[2], data[3]]);
                 let timestamp = u32::from_be_bytes([data[4], data[5], data[6], data[7]]);
                 let source = u32::from_be_bytes([data[8], data[9], data[10], data[11]]);
+                let rollover = rollovers.entry(source).or_default();
                 let roc = rollover.guess(seq);
                 match keys.unprotect_rtp(data, roc) {
                     Ok(clear) => {
                         rollover.update(seq, roc);
-                        let s = stats.get_or_insert_with(|| ReceiverStats::new(source, MIC_CLOCK_RATE, seq));
+                        let clock_rate = media.clock_rate();
+                        let s = stats.get_or_insert_with(|| ReceiverStats::new(source, clock_rate, seq));
                         if s.ssrc == source {
                             s.received(seq, timestamp, Instant::now());
-                            let header = srtp::rtp_header_len(&clear).unwrap_or(clear.len());
-                            let before = mic.decoded;
-                            mic.packet(seq, &clear[header..]);
-                            if before == 0 && mic.decoded == 1 {
-                                report.send(Event::Streaming);
-                            }
+                        }
+                        // The camera's every packet is kept, whatever its
+                        // SSRC; the microphone's from the first SSRC only.
+                        let first = match &media {
+                            Media::Camera(_) => true,
+                            Media::Microphone(_) => s.ssrc == source,
+                        };
+                        if first && media.packet(seq, &clear) {
+                            report.send(Event::Streaming);
                         }
                         if packets <= 3 || packets.is_power_of_two() {
                             println!(
@@ -475,11 +557,9 @@ async fn udp_stream(
                 }
                 if reports_out <= 3 || reports_out.is_power_of_two() {
                     println!(
-                        "capture: stream {stream}: SRTCP {reports_out} to {to}: receiver report, {} packets received; audio: {} decoded, {} concealed, {} errors",
+                        "capture: stream {stream}: SRTCP {reports_out} to {to}: receiver report, {} packets received; {}",
                         s.packets(),
-                        mic.decoded,
-                        mic.concealed,
-                        mic.errors
+                        media.summary()
                     );
                 }
             }
