@@ -2647,7 +2647,7 @@ dependencies = [
 
 [[package]]
 name = "warlock-client"
-version = "0.2.4"
+version = "0.2.5"
 dependencies = [
  "bytes",
  "http 1.5.0",

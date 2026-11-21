@@ -10,7 +10,9 @@ gives Windows. Each of the iPhone's microphones becomes a Windows
 microphone of its own, which other programs record from.
 
 Koala needs Warlock 0.2.4 or later, and what Warlock needs, a Bluetooth LE
-adapter included: Warlock asks the iPhone onto AWDL over Bluetooth LE.
+adapter included: Warlock asks the iPhone onto AWDL over Bluetooth LE. With
+Warlock 0.2.5 or later, Koala's menu also says when that adapter is missing,
+off, or without the Bluetooth 5 features it needs.
 
 ## Privacy
 
