@@ -876,6 +876,48 @@ what it asks of a host. Addresses are in that framework.
 Koala's `capture` does this (2026-11-21): `--camera` adds the camera to the
 microphones, in one session, five streams.
 
+## Both at once, tried (2026-11-21, trials 27–29)
+
+Each trial asked for 60 s of the microphones and the camera together.
+
+- **Trial 27: 12 s.**
+  - All five streams came up, both AVC offers were answered, and both
+    media streams arrived and decrypted: 360 pictures, 1,180 microphone
+    packets.
+  - Every second, the iPhone refused one of Koala's receiver reports
+    (`SRTCPVerifyAuthenticationTag … Authentication failed`, `SRTCP
+    verification failed (80220039)`).
+  - At 12 s the camera's stream timed out, never having had a report it
+    took (`Last RTCP packet receive time:nan … Triggering RTCP timeout`),
+    and the iPhone sent `ConnectionDisconnect`.
+  - The refusals don't name their stream. They were first read as the
+    microphones', which led to trial 28's guess.
+- **Trial 28: 12 s again, the same way.**
+  - The guess under test: the iPhone checked the microphones' reports
+    against the camera's salt. So both entities got the same session ID.
+  - Both streams still decrypted, the refusals went on one a second, and
+    the camera's stream again timed out with no report taken.
+  - The iPhone's log showed each stream's key
+    (`vcMediaStreamSRTPReceiveMediaKey`): each had its own, with the salt
+    they shared. Koala's reports were each signed with their own stream's
+    key, so the keys weren't the problem.
+- **The cause: one SSRC for both.** Koala gave both entities the same
+  SSRC, in their AVC answers and in its reports.
+  - The iPhone has a separate SSRC for each stream. Evidently it takes each
+    report for the stream whose answer named the report's SSRC.
+  - With one SSRC, both of Koala's reports went to the microphones' stream,
+    whose AVC offer was answered first. It verified its own report and
+    refused the camera's, and the camera's stream had no report at all.
+- **Trial 29: the full 60 s.**
+  - The change: each entity got its own SSRC and its own session ID, as the
+    framework has them. Otherwise it was trial 27.
+  - No reports were refused and no stream timed out. The iPhone tore the
+    streams down only when Koala ended the session.
+  - The camera gave 1,687 pictures (56.2 s), none lost, all of which
+    ffmpeg decodes.
+  - The microphones gave four tracks of 56.3 s from 3,070 packets, none in
+    error.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -896,7 +938,8 @@ microphones, in one session, five streams.
   4. open a `com.apple.continuitycapture` RemoteDisplay session in mic-only
      mode, and take a Warlock realtime lock on the iPhone (`POST
      /v1/realtime`) as it starts, for as long as it lasts;
-  5. negotiate AVConference;
+  5. negotiate AVConference, with an SSRC of Koala's own for each entity
+     (trials 27–29);
   6. send an SRTCP receiver report every second (AES_256_CM_HMAC_SHA1_80,
      the same key) to the iPhone's microphone address, which is on its
      `llw0`, from a socket bound to Warlock's link-local. Windows otherwise

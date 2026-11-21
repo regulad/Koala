@@ -120,20 +120,26 @@ pub async fn run(
         return println!("capture: sending _systemInfo failed: {e}");
     }
 
-    // Koala's SSRC, for the AVC answers and its RTCP alike.
-    let mut ssrc = [0u8; 4];
-    crate::random(&mut ssrc);
     // The microphones, and with `--camera` the camera too, in the one
-    // session: each entity its own configuration and session ID, which salts
-    // its stream's SRTP key (`docs/guest-pairing.md`, "Both at once").
+    // session: each entity its own configuration, with a session ID of its
+    // own, which salts its stream's SRTP key (`docs/guest-pairing.md`, "Both
+    // at once").
     let mut configurations = vec![Configuration::microphone(uuid_v4(), 1)];
     if camera::RECORD.get().is_some() {
         configurations.push(Configuration::camera(uuid_v4(), 1, StreamFormat::hd_1080p30()));
     }
+    let ssrcs = configurations
+        .iter()
+        .map(|c| {
+            let mut ssrc = [0u8; 4];
+            crate::random(&mut ssrc);
+            (c.entity, u32::from_be_bytes(ssrc))
+        })
+        .collect();
     let mut session = Session {
         connection,
         local,
-        ssrc: u32::from_be_bytes(ssrc),
+        ssrcs,
         model: Model::default(),
         configurations,
         started: false,
@@ -157,6 +163,13 @@ pub async fn run(
     }
 }
 
+/// Koala's SSRC for each entity, by entity: in that entity's AVC answer and
+/// in its stream's RTCP. One each, as the iPhone has: given one for both,
+/// the iPhone took both streams' reports for the microphones', refused the
+/// camera's there ("SRTCP verification failed"), and ended the session when
+/// the camera's stream went 12 s without RTCP (trials 27 and 28).
+type Ssrcs = BTreeMap<i64, u32>;
+
 /// A fresh random UUID (version 4), as a configuration's session ID.
 fn uuid_v4() -> [u8; 16] {
     let mut id = [0u8; 16];
@@ -169,8 +182,8 @@ fn uuid_v4() -> [u8; 16] {
 struct Session {
     connection: Connection<TcpStream>,
     local: Local,
-    /// Koala's SSRC in the media session.
-    ssrc: u32,
+    /// Koala's SSRC for each entity.
+    ssrcs: Ssrcs,
     /// The iPhone's model, from its AVC offer on Control.
     model: Model,
     /// The entities asked for, each with its own configuration: the
@@ -274,7 +287,7 @@ impl Session {
                             tcp,
                             psk,
                             start_rx,
-                            self.ssrc,
+                            self.ssrcs.clone(),
                             self.model.clone(),
                         ));
                         self.activated(&stream).await?;
@@ -293,17 +306,18 @@ impl Session {
                     "capture: stream {stream}: UDP, port {port}; the iPhone's end {:?}",
                     content.get("_streamAddr")
                 );
-                // Salted with its own entity's session ID: the microphone's
-                // with the microphone's, the camera's with the camera's.
+                // Salted with its entity's configuration's session ID, and
+                // reported on with its entity's SSRC.
                 let Some(configuration) = self.configurations.iter().find(|c| c.media_stream() == stream) else {
                     println!("capture: stream {stream}: no entity asked for uses it");
                     return self.reply(message, dict(vec![])).await;
                 };
                 let keys = srtp::Context::for_stream(&key, &configuration.session_id);
+                let ssrc = self.ssrcs[&configuration.entity];
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
                 let (model, report) = (self.model.clone(), self.report.clone());
-                self.streams.spawn(udp_stream(stream.clone(), socket, keys, self.ssrc, model, report, stop_rx));
+                self.streams.spawn(udp_stream(stream.clone(), socket, keys, ssrc, model, report, stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -357,7 +371,7 @@ async fn rapport_stream(
     tcp: TcpStream,
     psk: [u8; 32],
     start: oneshot::Receiver<Vec<Value>>,
-    ssrc: u32,
+    ssrcs: Ssrcs,
     model: Model,
 ) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
@@ -383,7 +397,7 @@ async fn rapport_stream(
         let out = match message.kind {
             MessageType::Request => message.reply(dict(vec![])),
             MessageType::Event if stream == name::CONTROL && message.id.as_deref() == Some(STREAM_EVENT) => {
-                let Some(content) = avc_answer(&message.content, ssrc, &model) else { continue };
+                let Some(content) = avc_answer(&message.content, &ssrcs, &model) else { continue };
                 xid += 1;
                 Message::event(STREAM_EVENT, xid, content)
             }
@@ -401,7 +415,7 @@ async fn rapport_stream(
 /// iPhone's model, which names its microphones. A camera's offer (one with
 /// video settings) is answered with its own video settings, and kept beside
 /// the recording.
-fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
+fn avc_answer(content: &Value, ssrcs: &Ssrcs, model: &Model) -> Option<Value> {
     if content.get(SELECTOR).and_then(Value::as_u64) != Some(control::AVC_NEGOTIATION) {
         return None;
     }
@@ -412,6 +426,10 @@ fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
     let (Some(entity), Some(data)) = (args.first().and_then(Value::as_u64), args.get(1).and_then(Value::as_bytes))
     else {
         println!("capture: an AVC offer that isn't [entity, data]");
+        return None;
+    };
+    let Some(&ssrc) = i64::try_from(entity).ok().and_then(|e| ssrcs.get(&e)) else {
+        println!("capture: an AVC offer for entity {entity}, which Koala didn't ask for");
         return None;
     };
     let offer = Offer::parse(data).map_err(|e| println!("capture: the AVC offer: {e}")).ok()?;
