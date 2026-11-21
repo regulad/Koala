@@ -1,5 +1,6 @@
 //! The camera's video, recorded: `koala guest --camera PATH` asks the
-//! iPhone for its camera (entity 1) in place of its microphone, and writes
+//! iPhone for its camera (entity 1) as well as its microphones, in the same
+//! session (`docs/guest-pairing.md`, "Both at once"), and writes
 //! what it sends to PATH as a Matroska file: HEVC as it arrives, not
 //! re-encoded (`koala_capture::video`), in FFmpeg's Matroska muxer
 //! (`crate::mkv`). Windows plays it with Microsoft's HEVC Video Extensions.
@@ -19,8 +20,8 @@ use koala_capture::video::{self, AccessUnit, Depacketizer, nal, nal_type};
 
 use crate::mkv::MkvWriter;
 
-/// Where `--camera` records the video, if anywhere: also what makes the
-/// session the camera's.
+/// Where `--camera` records the video, if anywhere: also what adds the
+/// camera to the session.
 pub static RECORD: OnceLock<PathBuf> = OnceLock::new();
 
 /// The camera's stream: counted, and recorded to `RECORD` if it's set.

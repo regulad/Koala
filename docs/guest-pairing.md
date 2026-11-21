@@ -827,6 +827,55 @@ on and off:
 
 So an iPhone doesn't need the flag. What it does stays unknown.
 
+## Both at once, and the host's other duties (static analysis, 2026-11-21)
+
+From the iPhone's own `CMContinuityCaptureRemote.framework` (iOS 27, the
+dumps of runs 8–17: no host code, tvOS's or macOS's, was dumped), read for
+what it asks of a host. Addresses are in that framework.
+
+- **One session runs every entity.** The iPhone keeps a device per entity
+  it has, by entity (`-[CMContinuityCaptureRemoteCompositeDevice
+  setupCaptureDevices]`, 0x25b1589b0): 1 the camera, 3 the microphones, 2
+  Desk View (left out for an Apple TV). `_startStream:option:completion:`
+  (0x25b15b964) starts the configuration's entity, with a state bit each
+  (audio 2, video 4), so both stream together; entity 0, which has no
+  device, fails ("Invalid capture device", -12785).
+- **What a host sends:**
+  - the session start with one PreStartConfiguration, optional, which the
+    iPhone starts early (0x25b151d34), and a StreamsSetup listing Control,
+    Command, Data and each entity's media stream
+    (`…MediaIdentifierDefaultVideo` 1, `ContinuityCaptureMediaMicrophone`
+    3: `_CMContinuityCaptureEntityTypeFromMediaIdentifer`, 0x25b180300);
+  - once every stream is up, a StartStream per entity on Command, its own
+    configuration archived in it. Back to back is fine: the iPhone queues
+    them, each when the one before is done (0x25b10e4cc), the microphone's
+    after its connection sound.
+- **Each media stream's SRTP key** is its `_streamKey` with its own
+  entity's configuration's session ID (0x25b110658, `CreateCipherKey`), so
+  each entity gets a session ID of its own.
+- **Each entity's AVC offer** (`[entity, blob]` on Control) is its own,
+  answered within 10 s (0x25b11332c, else -1017).
+- **The clock on Command.** Selector 4 is the microphone's
+  (`-[CMContinuityCaptureRemoteAudioDevice _dispatchAudioFrame:]`): its
+  sample count against its gPTP time and grandmaster, sent until the host
+  answers with selector 5 (any array, `[]` will do), which stops it
+  (0x25b1552a4). Nothing ends a session without a 5. Koala doesn't send it:
+  that mapping is what audio and video will be synchronized with.
+- **gPTP.** The iPhone binds its own TimeSync clock, the host added as a
+  unicast peer (`createTimeSyncClockWithPeerAddress:`), and needs nothing
+  back: as grandmaster, its clock is valid whatever the host does.
+- **What ends a session:** a media stream 12 s without RTCP (8 s wired), an
+  AVC setup unanswered for 10 s, or the host ending it. No limit on its
+  length was found, nor a heartbeat but RTCP. Rapport's connection has a
+  10 s keepalive, of a kind unknown.
+- **Keyframes.** The framework has no request for one; an RTCP PLI or FIR,
+  which AVConference would read, is untried. Changing a detection setting
+  (Control SetValue `FaceDetectionEnabled` and the like) restarts the
+  stream, and with it a keyframe (0x25b172004).
+
+Koala's `capture` does this (2026-11-21): `--camera` adds the camera to the
+microphones, in one session, five streams.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -855,15 +904,17 @@ So an iPhone doesn't need the flag. What it does stays unknown.
 
 ## Open
 
-1. **The clock messages on Command,** and the channel order on models
-   other than the iPhone 17 Pro. That order is inferred from their device
-   trees (`tools/mic_maps.py`). On a swap-variant board the two bottom
-   microphones may be the other way round.
-2. **PTP:** whether the host must answer the iPhone's gPTP (its Apple
-   Signaling TLVs), or only follow it. Prior art: shairport-sync's NQPTP.
-   Two minutes ran without it (trial 22).
+1. **The channel order on models other than the iPhone 17 Pro.** That
+   order is inferred from their device trees (`tools/mic_maps.py`). On a
+   swap-variant board the two bottom microphones may be the other way
+   round. (The clock messages on Command, once open here, are the
+   microphone's clock against gPTP: "Both at once".)
+2. **PTP:** settled by static analysis ("Both at once"): the host needn't
+   answer the iPhone's gPTP. Following it would give the clock audio and
+   video share. Prior art: shairport-sync's NQPTP.
 3. **Sessions longer than Koala's 2-minute `SESSION_TIME`**, which trials 22
-   and 23 reached. `koala guest --session SECONDS` sets it.
+   and 23 reached. The iPhone's framework sets no limit ("Both at once");
+   untried past 2 minutes. `koala guest --session SECONDS` sets it.
 4. **CoreUtils' extra-info layout** in M5/M6 (`altIRK`, `model`, `name`).
 5. **Which iOS process runs the scanner action.** The iOS file system wasn't
    extracted, so entitlements weren't read. This doesn't affect Koala.

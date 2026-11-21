@@ -16,7 +16,7 @@ use koala_capture::avc::{AnswerSettings, Offer, answer, ntp_now};
 use koala_capture::rtcp::{self, ReceiverStats};
 use koala_capture::session::{
     ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, StreamFormat, control, message,
-    session_start, start_stream, stream as name, stream_activated, stream_announce,
+    session_start, start_stream, stream as name, stream_activated, stream_announce, streams,
 };
 use koala_capture::srtp::{self, Rollover};
 use koala_capture::streams::{
@@ -83,7 +83,7 @@ pub async fn run(
     let port = iphone.port();
     // The session, timed for the diagnostics: its kind, how it went and how
     // long it lasted, and nothing about the iPhone but its model.
-    let kind = if camera::RECORD.get().is_some() { "camera" } else { "microphone" };
+    let kind = if camera::RECORD.get().is_some() { "microphone+camera" } else { "microphone" };
     let mut timed = crate::diagnostics::Timed::start(kind, "capture.session");
     let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(iphone)).await else {
         timed.fail("no-connection");
@@ -120,25 +120,22 @@ pub async fn run(
         return println!("capture: sending _systemInfo failed: {e}");
     }
 
-    let mut session_id = [0u8; 16];
-    crate::random(&mut session_id);
-    session_id[6] = (session_id[6] & 0x0f) | 0x40;
-    session_id[8] = (session_id[8] & 0x3f) | 0x80;
-    // Koala's SSRC, for the AVC answer and its RTCP alike.
+    // Koala's SSRC, for the AVC answers and its RTCP alike.
     let mut ssrc = [0u8; 4];
     crate::random(&mut ssrc);
-    // `--camera` asks for the camera in place of the microphone.
-    let configuration = if camera::RECORD.get().is_some() {
-        Configuration::camera(session_id, 1, StreamFormat::hd_1080p30())
-    } else {
-        Configuration::microphone(session_id, 1)
-    };
+    // The microphones, and with `--camera` the camera too, in the one
+    // session: each entity its own configuration and session ID, which salts
+    // its stream's SRTP key (`docs/guest-pairing.md`, "Both at once").
+    let mut configurations = vec![Configuration::microphone(uuid_v4(), 1)];
+    if camera::RECORD.get().is_some() {
+        configurations.push(Configuration::camera(uuid_v4(), 1, StreamFormat::hd_1080p30()));
+    }
     let mut session = Session {
         connection,
         local,
         ssrc: u32::from_be_bytes(ssrc),
         model: Model::default(),
-        configuration,
+        configurations,
         started: false,
         activated: BTreeSet::new(),
         start_command: None,
@@ -160,6 +157,15 @@ pub async fn run(
     }
 }
 
+/// A fresh random UUID (version 4), as a configuration's session ID.
+fn uuid_v4() -> [u8; 16] {
+    let mut id = [0u8; 16];
+    crate::random(&mut id);
+    id[6] = (id[6] & 0x0f) | 0x40;
+    id[8] = (id[8] & 0x3f) | 0x80;
+    id
+}
+
 struct Session {
     connection: Connection<TcpStream>,
     local: Local,
@@ -167,12 +173,15 @@ struct Session {
     ssrc: u32,
     /// The iPhone's model, from its AVC offer on Control.
     model: Model,
-    configuration: Configuration,
+    /// The entities asked for, each with its own configuration: the
+    /// microphones first (the one started early), then the camera.
+    configurations: Vec<Configuration>,
     started: bool,
     /// Streams whose connection or path is up.
     activated: BTreeSet<String>,
-    /// Sends StartStream on the Command stream, once every stream is up.
-    start_command: Option<oneshot::Sender<Value>>,
+    /// Sends the StartStreams, one per entity, on the Command stream, once
+    /// every stream is up.
+    start_command: Option<oneshot::Sender<Vec<Value>>>,
     /// Held for the UDP paths' tasks: dropped with the session, they stop.
     udp_stop: Vec<oneshot::Sender<()>>,
     /// The streams' tasks, ended with the session.
@@ -208,7 +217,7 @@ impl Session {
             // The answer to `_systemInfo`: the session's go.
             (MessageType::Response, _) if message.xid == Some(1) && !self.started => {
                 self.started = true;
-                self.event(SESSION_EVENT, session_start(1, &self.configuration)).await?;
+                self.event(SESSION_EVENT, session_start(1, &self.configurations)).await?;
                 crate::diagnostics::step("capture: session start sent");
                 println!("capture: session start sent");
             }
@@ -217,10 +226,7 @@ impl Session {
                 println!("capture: session event {kind:?}: {:?}", message.content);
                 // Started: announce each stream again, as a tvOS host does.
                 if kind == Some(message::SESSION_STARTED) {
-                    let media_stream = self.configuration.media_stream();
-                    for (stream, media) in
-                        [(name::CONTROL, false), (name::COMMAND, false), (name::DATA, false), (media_stream, true)]
-                    {
+                    for (stream, media) in streams(&self.configurations) {
                         self.event(SESSION_EVENT, stream_announce(stream, media)).await?;
                     }
                 }
@@ -287,7 +293,13 @@ impl Session {
                     "capture: stream {stream}: UDP, port {port}; the iPhone's end {:?}",
                     content.get("_streamAddr")
                 );
-                let keys = srtp::Context::for_stream(&key, &self.configuration.session_id);
+                // Salted with its own entity's session ID: the microphone's
+                // with the microphone's, the camera's with the camera's.
+                let Some(configuration) = self.configurations.iter().find(|c| c.media_stream() == stream) else {
+                    println!("capture: stream {stream}: no entity asked for uses it");
+                    return self.reply(message, dict(vec![])).await;
+                };
+                let keys = srtp::Context::for_stream(&key, &configuration.session_id);
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
                 let (model, report) = (self.model.clone(), self.report.clone());
@@ -306,13 +318,20 @@ impl Session {
     async fn activated(&mut self, stream: &str) -> Result<(), String> {
         self.event(SESSION_EVENT, stream_activated(stream)).await?;
         self.activated.insert(stream.to_string());
-        println!("capture: stream {stream} activated ({} of 4)", self.activated.len());
-        if self.activated.len() == 4
+        let all = streams(&self.configurations).len();
+        println!("capture: stream {stream} activated ({} of {all})", self.activated.len());
+        if self.activated.len() == all
             && let Some(start) = self.start_command.take()
         {
-            let _ = start.send(Message::event(STREAM_EVENT, 1, start_stream(&self.configuration, 0)));
+            // One StartStream per entity, back to back: the iPhone queues
+            // them, and starts each when the one before is done.
+            let starts = (1..)
+                .zip(&self.configurations)
+                .map(|(xid, c)| Message::event(STREAM_EVENT, xid, start_stream(c, 0)))
+                .collect();
+            let _ = start.send(starts);
             crate::diagnostics::step("capture: every stream is up");
-            println!("capture: every stream is up: StartStream on Command");
+            println!("capture: every stream is up: {} StartStream on Command", self.configurations.len());
         }
         Ok(())
     }
@@ -337,19 +356,23 @@ async fn rapport_stream(
     stream: String,
     tcp: TcpStream,
     psk: [u8; 32],
-    start: oneshot::Receiver<Value>,
+    start: oneshot::Receiver<Vec<Value>>,
     ssrc: u32,
     model: Model,
 ) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
-    // Only Command gets a StartStream (xid 1); the others' senders are dropped.
-    if let Ok(value) = start.await
-        && let Err(e) = connection.send_opack(FrameType::E_OPACK, &value).await
-    {
-        return println!("capture: stream {stream}: {e}");
-    }
+    // Only Command gets StartStreams (xids 1 on), one per entity; the
+    // others' senders are dropped.
     let mut xid = 1;
+    if let Ok(starts) = start.await {
+        for value in &starts {
+            if let Err(e) = connection.send_opack(FrameType::E_OPACK, value).await {
+                return println!("capture: stream {stream}: {e}");
+            }
+        }
+        xid = starts.len() as u64;
+    }
     loop {
         let value = match connection.receive_opack().await {
             Ok((FrameType::E_OPACK, value)) => value,

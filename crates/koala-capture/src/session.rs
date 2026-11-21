@@ -218,24 +218,30 @@ impl Configuration {
     }
 }
 
+/// Every stream a session of `configurations` uses: Control, Command and
+/// Data, then each entity's media stream (`docs/guest-pairing.md`, "Both at
+/// once").
+pub fn streams(configurations: &[Configuration]) -> Vec<(&'static str, bool)> {
+    [(stream::CONTROL, false), (stream::COMMAND, false), (stream::DATA, false)]
+        .into_iter()
+        .chain(configurations.iter().map(|c| (c.media_stream(), true)))
+        .collect()
+}
+
 /// The session-start event's content (`MessageType` 0): the session's
-/// number, its archived configuration, and every stream it will use.
-pub fn session_start(session: u64, configuration: &Configuration) -> Value {
-    let streams = [
-        (stream::CONTROL, false),
-        (stream::COMMAND, false),
-        (stream::DATA, false),
-        (configuration.media_stream(), true),
-    ]
-    .into_iter()
-    .map(|(name, media)| stream_announce(name, media))
-    .collect::<Vec<_>>();
-    dict(vec![
-        (MESSAGE_TYPE, Value::int(message::SESSION_START)),
-        (SESSION_ID, Value::int(session)),
-        (PRE_START_CONFIGURATION, Value::Bytes(configuration.archive())),
-        (STREAMS_SETUP, Value::Array(streams)),
-    ])
+/// number, the first configuration archived (the iPhone takes one, and
+/// starts it early), and every stream the session will use. One session
+/// runs every entity: the iPhone keeps a device per entity, and streams
+/// them side by side.
+pub fn session_start(session: u64, configurations: &[Configuration]) -> Value {
+    let streams =
+        streams(configurations).into_iter().map(|(name, media)| stream_announce(name, media)).collect::<Vec<_>>();
+    let mut content = vec![(MESSAGE_TYPE, Value::int(message::SESSION_START)), (SESSION_ID, Value::int(session))];
+    if let Some(first) = configurations.first() {
+        content.push((PRE_START_CONFIGURATION, Value::Bytes(first.archive())));
+    }
+    content.push((STREAMS_SETUP, Value::Array(streams)));
+    dict(content)
 }
 
 /// A stream's announcement (`MessageType` 2).
@@ -294,7 +300,7 @@ mod tests {
         let class = class.as_dictionary().unwrap().get("$classname").and_then(plist::Value::as_string);
         assert_eq!(class, Some("CMContinuityCaptureStreamFormat"));
 
-        let start = session_start(1, &configuration);
+        let start = session_start(1, std::slice::from_ref(&configuration));
         let Some(Value::Array(streams)) = start.get(STREAMS_SETUP) else { panic!("no streams") };
         let media: Vec<&str> = streams
             .iter()
@@ -306,7 +312,7 @@ mod tests {
 
     #[test]
     fn the_session_start_lists_four_streams_one_media() {
-        let start = session_start(1, &Configuration::microphone([2; 16], 1));
+        let start = session_start(1, &[Configuration::microphone([2; 16], 1)]);
         assert_eq!(start.get(MESSAGE_TYPE).and_then(Value::as_u64), Some(0));
         let Some(Value::Array(streams)) = start.get(STREAMS_SETUP) else { panic!("no streams") };
         assert_eq!(streams.len(), 4);
@@ -316,6 +322,24 @@ mod tests {
             .filter_map(|s| s.get(STREAM_IDENTIFIER).and_then(Value::as_str))
             .collect();
         assert_eq!(media, [stream::MICROPHONE]);
+        assert!(apple_opack::pack(&start).is_ok());
+    }
+
+    #[test]
+    fn both_entities_share_one_session_with_a_media_stream_each() {
+        let microphone = Configuration::microphone([4; 16], 1);
+        let camera = Configuration::camera([5; 16], 1, StreamFormat::hd_1080p30());
+        let start = session_start(1, &[microphone.clone(), camera]);
+        let Some(Value::Array(streams)) = start.get(STREAMS_SETUP) else { panic!("no streams") };
+        assert_eq!(streams.len(), 5);
+        let media: Vec<&str> = streams
+            .iter()
+            .filter(|s| s.get(STREAM_IS_MEDIA) == Some(&Value::Bool(true)))
+            .filter_map(|s| s.get(STREAM_IDENTIFIER).and_then(Value::as_str))
+            .collect();
+        assert_eq!(media, [stream::MICROPHONE, stream::DEFAULT_VIDEO]);
+        // The first configuration is the one started early.
+        assert_eq!(start.get(PRE_START_CONFIGURATION), Some(&Value::Bytes(microphone.archive())));
         assert!(apple_opack::pack(&start).is_ok());
     }
 }

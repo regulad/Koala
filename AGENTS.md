@@ -34,8 +34,8 @@ breaks the promise without anyone noticing.
 - Anything that does go out passes through `redact`; keep its test cases
   growing with what you've seen leak elsewhere.
 - Transactions are capture sessions with the iPhone only, named by their
-  kind (`microphone`, `camera`); Koala's requests to Warlock aren't, since
-  Warlock reports its own (Parker, 2026-11-21).
+  kind (`microphone`, `microphone+camera`); Koala's requests to Warlock
+  aren't, since Warlock reports its own (Parker, 2026-11-21).
 - `DO_NOT_TRACK` turns everything off; nothing may bypass it.
 - Only a release has the DSN built in. A trial that should report builds
   with `KOALA_DIAGNOSTICS=1`; nothing else turns it on.
