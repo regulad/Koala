@@ -11,6 +11,7 @@
 
 pub mod camera;
 pub mod capture;
+pub mod diagnostics;
 mod dnssd;
 pub mod guest;
 pub mod mic;

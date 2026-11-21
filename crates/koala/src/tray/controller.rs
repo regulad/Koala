@@ -173,8 +173,14 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
                     Err(e) if e.is_cancelled() => None,
                     Err(e) => Some(format!("Koala's connection failed: {e}")),
                 };
+                // A run that failed (a session's own ends report themselves).
+                if let Some(e) = &failed {
+                    crate::diagnostics::error(e);
+                }
                 view.status = Status::Disconnected;
             }
+            // Not a transaction for the diagnostics: a health probe, every
+            // 2 s while nothing runs (crate::diagnostics).
             _ = poll.tick(), if task.is_none() => match Client::new(PIPE).info().await {
                 Ok(info) => {
                     // Nothing runs, so the row is the idle one.

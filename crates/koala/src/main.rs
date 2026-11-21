@@ -13,7 +13,7 @@
 
 use std::time::Duration;
 
-use koala::{camera, guest, mic};
+use koala::{camera, diagnostics, guest, mic};
 
 /// How long the trial follows a capture session, unless `--session` says.
 const SESSION_TIME: Duration = Duration::from_secs(120);
@@ -61,6 +61,8 @@ async fn main() {
             std::process::exit(2);
         }
     };
+    // Diagnostics (PRIVACY.md), unless DO_NOT_TRACK is set.
+    let diagnostics = diagnostics::start("koala");
     let options = guest::Options {
         wait: Some(Duration::from_secs(seconds)),
         session: Some(session),
@@ -69,6 +71,9 @@ async fn main() {
     };
     if let Err(e) = guest::run(options).await {
         eprintln!("koala: {e}");
+        diagnostics::error(&e);
+        // Exiting skips destructors: what's left goes first.
+        drop(diagnostics);
         std::process::exit(1);
     }
 }

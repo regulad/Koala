@@ -1,11 +1,17 @@
-//! About Koala: the version, the licence, and the licences of everything
-//! built into it (`data/third-party-notices.txt`, from
-//! `tools/third_party_notices.py`).
+//! About Koala: the version, the licence, what Koala sends for diagnostics
+//! (`PRIVACY.md`, in short), and the licences of everything built into it
+//! (`data/third-party-notices.txt`, from `tools/third_party_notices.py`).
 
 use windows_reactor::*;
 
 const LICENCE: &str = include_str!("../../../../LICENSE.md");
 const NOTICES: &str = include_str!("../../data/third-party-notices.txt");
+/// `PRIVACY.md`, in short (`crate::diagnostics`).
+const PRIVACY: &str = "To find and fix problems, Koala sends crash reports and diagnostics to Sentry (sentry.io): \
+                       errors, usage statistics, Koala's and Warlock's versions, this computer's Windows version, \
+                       processor and memory, and the iPhone's model and iOS version. Nothing that identifies you or \
+                       your devices is sent: no names, IDs or addresses. To send nothing, set the environment \
+                       variable DO_NOT_TRACK to 1. Privacy policy: https://github.com/regulad/Koala/blob/master/PRIVACY.md";
 
 #[derive(Clone, PartialEq)]
 pub struct Input {
@@ -51,6 +57,12 @@ impl Component for AboutWindow {
                     paragraph(
                         "Koala is not affiliated with Apple. Apple TV, iPhone, AWDL and Continuity are Apple's.".into(),
                     ),
+                    TextBlock::new()
+                        .text("Privacy")
+                        .font_size(20.0)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .margin(Thickness::new(0.0, 12.0, 0.0, 0.0)),
+                    paragraph(PRIVACY.into()),
                     TextBlock::new()
                         .text("Licences")
                         .font_size(20.0)

@@ -13,7 +13,7 @@
 
 use std::os::windows::io::AsRawHandle;
 
-use koala::{mic, tray};
+use koala::{diagnostics, mic, tray};
 use windows_sys::Win32::System::Console::{GetStdHandle, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
 
 fn main() {
@@ -30,8 +30,13 @@ fn main() {
         println!("{}", tray::display::describe());
         return;
     }
+    // Diagnostics (PRIVACY.md), unless DO_NOT_TRACK is set.
+    let diagnostics = diagnostics::start("koala-tray");
     if let Err(e) = tray::run() {
         println!("koala-tray: {e}");
+        diagnostics::error(&e);
+        // Exiting skips destructors: what's left goes first.
+        drop(diagnostics);
         std::process::exit(1);
     }
 }

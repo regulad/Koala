@@ -357,6 +357,11 @@ impl Offer {
         self.endpoint.as_ref()?.string(call_info::DEVICE_TYPE)
     }
 
+    /// The iPhone's OS build, as its call info gives it (`24B156`).
+    pub fn os_build(&self) -> Option<&str> {
+        self.endpoint.as_ref()?.string(call_info::OS_VERSION)
+    }
+
     /// The payload types offered.
     pub fn payloads(&self) -> Vec<u8> {
         let flags = self.audio().and_then(|a| a.varint(audio::PAYLOAD_FLAGS)).unwrap_or(0);

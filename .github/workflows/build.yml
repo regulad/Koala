@@ -56,6 +56,10 @@ jobs:
         run: ./tools/ffmpeg.ps1
       - name: Build
         run: cargo build --release --locked -p koala
+      # The privacy policy goes with the programs (crates/koala/src/diagnostics.rs).
+      - name: Privacy policy
+        shell: pwsh
+        run: Copy-Item PRIVACY.md target/release/
       # The programs, and FFmpeg's DLLs beside them (koala's build script
       # puts them there), which are BtbN's and aren't signed here.
       - uses: actions/upload-artifact@v7
@@ -65,6 +69,7 @@ jobs:
             target/release/koala.exe
             target/release/koala-tray.exe
             target/release/*.dll
+            target/release/PRIVACY.md
           if-no-files-found: error
           retention-days: 1
 
@@ -118,4 +123,5 @@ jobs:
           path: |
             programs/*.exe
             programs/*.dll
+            programs/PRIVACY.md
           if-no-files-found: error

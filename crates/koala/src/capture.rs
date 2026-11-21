@@ -81,7 +81,13 @@ pub async fn run(
     report: Report,
 ) {
     let port = iphone.port();
+    // The session, timed for the diagnostics: its kind, how it went and how
+    // long it lasted, and nothing about the iPhone but its model.
+    let kind = if camera::RECORD.get().is_some() { "camera" } else { "microphone" };
+    let mut timed = crate::diagnostics::Timed::start(kind, "capture.session");
     let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(iphone)).await else {
+        timed.fail("no-connection");
+        crate::diagnostics::error("capture: no connection to the iPhone's RDLink listener");
         return println!("capture: no connection to port {port}");
     };
     let mut connection = Connection::new(stream).with_trace(format!("[iPhone port {port}]"));
@@ -89,15 +95,28 @@ pub async fn run(
     let expected = Some((peer.id.clone(), peer.public_key));
     let verify = pair_verify(&mut connection, identity.clone(), known, expected, AUTH_TYPE_SESSION_PAIRED);
     match tokio::time::timeout(Duration::from_secs(5), verify).await {
-        Ok(Ok(_)) => println!("capture: pair-verified"),
-        Ok(Err(e)) => return println!("capture: pair-verify failed: {e}"),
-        Err(_) => return println!("capture: no answer to pair-verify"),
+        Ok(Ok(_)) => {
+            crate::diagnostics::step("capture: pair-verified");
+            println!("capture: pair-verified");
+        }
+        Ok(Err(e)) => {
+            timed.fail("pair-verify");
+            crate::diagnostics::error(&format!("capture: pair-verify failed: {e}"));
+            return println!("capture: pair-verify failed: {e}");
+        }
+        Err(_) => {
+            timed.fail("pair-verify");
+            crate::diagnostics::error("capture: no answer to pair-verify");
+            return println!("capture: no answer to pair-verify");
+        }
     }
     let mut request = Message::request("_systemInfo", 1, info);
     if let Value::Dict(pairs) = &mut request {
         pairs.push(("_btHP".into(), false.into()));
     }
     if let Err(e) = connection.send_opack(FrameType::E_OPACK, &request).await {
+        timed.fail("system-info");
+        crate::diagnostics::error(&format!("capture: sending _systemInfo failed: {e}"));
         return println!("capture: sending _systemInfo failed: {e}");
     }
 
@@ -128,11 +147,16 @@ pub async fn run(
         report,
         xid: 100,
     };
-    match limit {
-        Some(limit) => {
-            let _ = tokio::time::timeout(limit, session.follow()).await;
-        }
+    let ended = match limit {
+        Some(limit) => tokio::time::timeout(limit, session.follow()).await.unwrap_or("time-limit"),
         None => session.follow().await,
+    };
+    timed.set("streams_up", session.activated.len());
+    timed.set("started", session.started);
+    if ended == "error" {
+        timed.fail(ended);
+    } else {
+        timed.set("ended", ended);
     }
 }
 
@@ -158,16 +182,23 @@ struct Session {
 }
 
 impl Session {
-    async fn follow(&mut self) {
+    /// Follows the session until it ends: how, as a word for the diagnostics
+    /// (`closed`: the iPhone ended it; `error`: Koala couldn't go on).
+    async fn follow(&mut self) -> &'static str {
         loop {
             let value = match self.connection.receive_opack().await {
                 Ok((FrameType::E_OPACK, value)) => value,
                 Ok(_) => continue,
-                Err(e) => return println!("capture: the session ended: {e}"),
+                Err(e) => {
+                    println!("capture: the session ended: {e}");
+                    return "closed";
+                }
             };
             let Some(message) = Message::parse(value) else { continue };
             if let Err(e) = self.handle(message).await {
-                return println!("capture: {e}");
+                crate::diagnostics::error(&format!("capture: {e}"));
+                println!("capture: {e}");
+                return "error";
             }
         }
     }
@@ -178,6 +209,7 @@ impl Session {
             (MessageType::Response, _) if message.xid == Some(1) && !self.started => {
                 self.started = true;
                 self.event(SESSION_EVENT, session_start(1, &self.configuration)).await?;
+                crate::diagnostics::step("capture: session start sent");
                 println!("capture: session start sent");
             }
             (MessageType::Event, Some(SESSION_EVENT)) => {
@@ -279,6 +311,7 @@ impl Session {
             && let Some(start) = self.start_command.take()
         {
             let _ = start.send(Message::event(STREAM_EVENT, 1, start_stream(&self.configuration, 0)));
+            crate::diagnostics::step("capture: every stream is up");
             println!("capture: every stream is up: StartStream on Command");
         }
         Ok(())
@@ -362,6 +395,9 @@ fn avc_answer(content: &Value, ssrc: u32, model: &Model) -> Option<Value> {
     if let Some(m) = offer.model() {
         let _ = model.set(m.to_owned());
     }
+    // Its model and OS build, and nothing else of it (the call info also
+    // has its name): the diagnostics' only facts about the iPhone.
+    crate::diagnostics::iphone(offer.model(), offer.os_build());
     let payload = if offer.video().is_some() {
         camera::save_offer(data);
         println!(
@@ -527,6 +563,7 @@ async fn udp_stream(
                             Media::Microphone(_) => s.ssrc == source,
                         };
                         if first && media.packet(seq, &clear) {
+                            crate::diagnostics::step("capture: the first media arrived");
                             report.send(Event::Streaming);
                         }
                         if packets <= 3 || packets.is_power_of_two() {

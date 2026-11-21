@@ -17,6 +17,8 @@ opus.workspace = true
 # Not used directly: pins opus's libopus build (PLAN.md, avc-media).
 opusic-sys.workspace = true
 qrcode.workspace = true
+regex-lite.workspace = true
+sentry.workspace = true
 tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
 warlock-client.workspace = true
 windows-reactor.workspace = true
@@ -39,6 +41,7 @@ windows-sys = { workspace = true, features = [
     "Win32_System_Diagnostics_Etw",
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
+    "Win32_System_SystemInformation",
     "Win32_System_Threading",
     "Win32_System_Time",
     "Win32_UI_Controls",
@@ -47,3 +50,7 @@ windows-sys = { workspace = true, features = [
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
+
+[dev-dependencies]
+# The diagnostics' test sends through the SDK to a test transport.
+sentry = { workspace = true, features = ["test"] }

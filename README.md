@@ -12,6 +12,12 @@ microphone of its own, which other programs record from.
 Koala needs Warlock 0.2.4 or later, and what Warlock needs, a Bluetooth LE
 adapter included: Warlock asks the iPhone onto AWDL over Bluetooth LE.
 
+## Privacy
+
+Koala sends crash reports and diagnostics to Sentry, without anything that
+identifies you, this computer or the iPhone: [`PRIVACY.md`](PRIVACY.md) says
+what. Set `DO_NOT_TRACK=1` and it sends nothing.
+
 **Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
 and where each part stands.
 
