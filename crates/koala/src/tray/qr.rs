@@ -1,8 +1,10 @@
 //! The QR window: the code 4 inches square on the screen, whatever its size
 //! or scale, in the corner of the primary monitor's work area nearest the
 //! notification area (so by the tray, wherever the taskbar is), 12 pt in
-//! from its edges, on top of other windows. Closing it stops the attempt; it
-//! closes itself once the iPhone is connected.
+//! from its edges, on top of other windows. It opens with the code, or with
+//! why the attempt failed; nothing shows while the code is made, but the
+//! cursor (`busy`). Closing it stops the attempt; it closes itself once the
+//! iPhone is connected, and for another attempt ("Try again").
 //!
 //! WinUI 3 through Reactor, which places and sizes windows but can't yet
 //! keep one on top or out of the taskbar: those, and the exact place, are
@@ -60,7 +62,7 @@ impl Component for QrWindow {
     }
 
     fn input_changed(&mut self, input: &Input, context: &ComponentContext<Self>) {
-        if input.qr == Qr::Hidden {
+        if !input.qr.shown() {
             let _ = context.close_window();
         }
     }
@@ -70,11 +72,13 @@ impl Component for QrWindow {
         context.window_title("Koala");
         context
             .window_visuals(WindowVisuals::new().client_size(size.width, size.height).backdrop(WindowBackdrop::Mica));
+        // Open only with the code or a failure (`Qr::shown`): anything else
+        // is the moment before it closes.
         let status = match (&input.status, &input.qr) {
             (Status::Connecting(name), _) => format!("Connecting to {name}…"),
             (_, Qr::Failed(_)) => "Koala couldn't connect.".into(),
             (_, Qr::Code(_)) => "Open the Camera app and point it at this code.".into(),
-            _ => "Getting ready…".into(),
+            _ => String::new(),
         };
         let plate: View = match &input.qr {
             Qr::Code(url) => match svg(url) {
@@ -82,7 +86,7 @@ impl Component for QrWindow {
                 None => message("The code couldn't be made.", None),
             },
             Qr::Failed(why) => message(why, Some(input.on_try_again.clone())),
-            _ => message("Getting ready…", None),
+            _ => message("", None),
         };
         StackPanel::new()
             .margin(Thickness::uniform(PAD))

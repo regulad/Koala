@@ -18,12 +18,15 @@
 //! Reactor, with its limits).
 //!
 //! Connect starts a guest run ([`crate::guest`]) and shows its QR code
-//! ([`qr`]) until the iPhone is connected. Reactor runs the UI on this
-//! thread; the run and the polling of Warlock run on Tokio
+//! ([`qr`]) until the iPhone is connected. Until the code is ready, the
+//! cursor is Windows' "working in background" one ([`busy`]), and no window
+//! opens: it opens with the code (Parker, 2026-11-21). Reactor runs the UI
+//! on this thread; the run and the polling of Warlock run on Tokio
 //! ([`controller`]), whose views come back through a [`bridge`].
 
 mod about;
 mod bridge;
+mod busy;
 mod controller;
 pub mod display;
 mod glyph;
@@ -84,6 +87,8 @@ struct Tray {
     _runtime: tokio::runtime::Runtime,
     /// Whether Windows will start Koala at logon ([`startup`]).
     start_on_logon: bool,
+    /// The cursor while the code is being made.
+    busy: busy::Busy,
 }
 
 impl Application for Tray {
@@ -115,13 +120,23 @@ impl Application for Tray {
         {
             println!("koala-tray: start on logon: {e}");
         }
-        Self { view: View::default(), commands, _bridge: bridge, _runtime: runtime, start_on_logon }
+        Self {
+            view: View::default(),
+            commands,
+            _bridge: bridge,
+            _runtime: runtime,
+            start_on_logon,
+            busy: busy::Busy::new(),
+        }
     }
 
     fn update(&mut self, message: Message, context: &ApplicationContext<Self>) {
         match message {
             Message::View(view) => {
-                let opening = self.view.qr == Qr::Hidden && view.qr != Qr::Hidden;
+                // The window opens with something to show: the code, or why
+                // the attempt failed. Until then, the cursor says Koala is at it.
+                let opening = !self.view.qr.shown() && view.qr.shown();
+                self.busy.set(view.qr == Qr::Preparing);
                 self.view = view;
                 if opening {
                     context.show_window("qr");
@@ -130,7 +145,7 @@ impl Application for Tray {
             Message::Menu(key) => match key.as_str() {
                 Some("connect") => {
                     let _ = self.commands.send(Command::Connect);
-                    if self.view.qr != Qr::Hidden {
+                    if self.view.qr.shown() {
                         context.show_window("qr");
                     }
                 }
@@ -147,9 +162,11 @@ impl Application for Tray {
                 }
                 _ => {}
             },
-            // Closed while still trying: the user gave up.
+            // Closed while showing the code or a failure: the user gave up.
+            // (It closes itself for another attempt, "Try again": that's no
+            // giving up.)
             Message::QrClosed => {
-                if self.view.qr != Qr::Hidden {
+                if self.view.qr.shown() {
                     let _ = self.commands.send(Command::Cancel);
                 }
             }

@@ -82,7 +82,8 @@ impl Status {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Qr {
     Hidden,
-    /// Connect was chosen; the run hasn't made its code yet.
+    /// Connect was chosen; the run hasn't made its code yet. No window says
+    /// so: the cursor does (`busy`), for at most [`PREPARE`].
     Preparing,
     /// The code's URL.
     Code(String),
@@ -90,6 +91,18 @@ pub enum Qr {
     /// another attempt starts.
     Failed(String),
 }
+
+impl Qr {
+    /// Whether the QR window shows it: the code, or why the attempt failed.
+    pub fn shown(&self) -> bool {
+        matches!(self, Qr::Code(_) | Qr::Failed(_))
+    }
+}
+
+/// How long making the code may take before the attempt fails, so the busy
+/// cursor can't stay up: it takes a second or two (Warlock's request, then
+/// the advert and the hold).
+pub const PREPARE: Duration = Duration::from_secs(20);
 
 /// What the windows show.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -122,6 +135,8 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
     let mut events: Option<UnboundedReceiver<Event>> = None;
     let mut poll = tokio::time::interval(POLL);
     poll.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    // When the code being made is overdue.
+    let mut overdue = tokio::time::Instant::now();
     publish(&view);
     loop {
         let before = view.clone();
@@ -135,6 +150,7 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
                     task = Some(tokio::spawn(guest::run(options)));
                     events = Some(rx);
                     view.qr = Qr::Preparing;
+                    overdue = tokio::time::Instant::now() + PREPARE;
                 }
                 Some(Command::Connect) => {}
                 Some(Command::Cancel) => {
@@ -178,6 +194,14 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
                     crate::diagnostics::error(e);
                 }
                 view.status = Status::Disconnected;
+            }
+            // No code yet, long past the second or two it takes.
+            _ = tokio::time::sleep_until(overdue), if view.qr == Qr::Preparing => {
+                stop(&mut task, &mut events);
+                view.status = Status::Disconnected;
+                let why = "Koala couldn't get its code ready in time.".to_string();
+                crate::diagnostics::error(&why);
+                failed = Some(why);
             }
             // A health probe, every 2 s while nothing runs.
             _ = poll.tick(), if task.is_none() => match Client::new(PIPE).info().await {
