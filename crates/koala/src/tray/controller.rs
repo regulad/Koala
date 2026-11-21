@@ -179,8 +179,7 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
                 }
                 view.status = Status::Disconnected;
             }
-            // Not a transaction for the diagnostics: a health probe, every
-            // 2 s while nothing runs (crate::diagnostics).
+            // A health probe, every 2 s while nothing runs.
             _ = poll.tick(), if task.is_none() => match Client::new(PIPE).info().await {
                 Ok(info) => {
                     // Nothing runs, so the row is the idle one.

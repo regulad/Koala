@@ -7,10 +7,9 @@
 //! - **Sent:**
 //!   - panics, and the errors that end a run or a session;
 //!   - a session per run of a program, for release health;
-//!   - a transaction per request to Warlock ([`request`]), except the
-//!     tray's polling of `GET /v1/info` while nothing runs, a health probe
-//!     every 2 s (as PepperCord leaves its health probes untraced), and one
-//!     per capture session ([`Timed`]);
+//!   - a transaction per capture session with the iPhone ([`Timed`]), and
+//!     no others: Koala's requests to Warlock aren't transactions, since
+//!     Warlock reports its own (Parker, 2026-11-21);
 //!   - this computer's Windows version, processor, memory and architecture
 //!     ([`system`]), what Warlock reports of its radio and Bluetooth
 //!     ([`warlock`]), and the iPhone's model and iOS build ([`iphone`]).
@@ -20,14 +19,12 @@
 //!   breadcrumb passes through [`redact`] before it leaves, and modules keep
 //!   only their file names. Sentry's organization doesn't store IP addresses.
 
-use std::future::Future;
 use std::sync::{Arc, LazyLock};
 use std::time::Instant;
 
 use regex_lite::Regex;
 use sentry::protocol::{Breadcrumb, Context, DebugImage, Event, Level, Map, SpanStatus, Stacktrace, Value};
 use sentry::{SessionMode, TransactionContext};
-use warlock_client::ClientError;
 use warlock_client::types::Info;
 
 /// Koala's Sentry project (`regulad/koala`, made by the homelab's
@@ -114,46 +111,8 @@ pub fn error(message: &str) {
     sentry::capture_message(message, Level::Error);
 }
 
-/// A request to Warlock, `method path` (the path as the contract names it,
-/// `/v1/peers/{address}`, so no address), as a transaction of its own: how
-/// long it took and how it went.
-pub async fn request<T>(
-    method: &str,
-    path: &str,
-    call: impl Future<Output = Result<T, ClientError>>,
-) -> Result<T, ClientError> {
-    let transaction = sentry::start_transaction(TransactionContext::new(&format!("{method} {path}"), "http.client"));
-    transaction.set_data("http.request.method", method.into());
-    transaction.set_data("server.address", "warlock".into());
-    let result = call.await;
-    let (status, code) = match &result {
-        Ok(_) => (SpanStatus::Ok, Some(200)),
-        Err(ClientError::Api { status, .. }) => (span_status(status.as_u16()), Some(status.as_u16())),
-        Err(ClientError::Connect { .. }) => (SpanStatus::Unavailable, None),
-        Err(_) => (SpanStatus::UnknownError, None),
-    };
-    if let Some(code) = code {
-        transaction.set_data("http.response.status_code", code.into());
-    }
-    transaction.set_status(status);
-    transaction.finish();
-    result
-}
-
-fn span_status(code: u16) -> SpanStatus {
-    match code {
-        200..=299 => SpanStatus::Ok,
-        400 => SpanStatus::InvalidArgument,
-        403 => SpanStatus::PermissionDenied,
-        404 => SpanStatus::NotFound,
-        409 => SpanStatus::AlreadyExists,
-        500..=599 => SpanStatus::InternalError,
-        _ => SpanStatus::UnknownError,
-    }
-}
-
-/// A timed piece of a run, such as a capture session, as a transaction:
-/// finished, with its length, when dropped.
+/// A capture session with the iPhone, as a transaction: finished, with its
+/// length, when dropped. Koala's only transactions.
 pub struct Timed {
     transaction: sentry::Transaction,
     started: Instant,
@@ -479,8 +438,9 @@ mod tests {
     /// What would leave, end to end, through the SDK with these options and
     /// the integrations `sentry::init` adds (contexts, debug images with
     /// their modules' paths; not the panic hook, which would take the other
-    /// tests' panics): an error and a request's transaction carry neither
-    /// this computer's name nor the user's, nor an address, nor a user.
+    /// tests' panics): an error and a capture session's transaction carry
+    /// neither this computer's name nor the user's, nor an address, nor a
+    /// user.
     #[test]
     fn nothing_identifying_leaves() {
         let mut options = sentry::apply_defaults(options("koala-test", None));
@@ -494,9 +454,10 @@ mod tests {
                     std::env::var("USERNAME").unwrap_or_default(),
                     std::env::var("COMPUTERNAME").unwrap_or_default()
                 ));
-                let transaction =
-                    sentry::start_transaction(TransactionContext::new("GET /v1/peers/{address}", "http.client"));
-                transaction.finish();
+                let mut session = Timed::start("microphone", "capture.session");
+                session.set("streams_up", 1);
+                session.fail("pair-verify");
+                drop(session);
             },
             options,
         );

@@ -13,7 +13,7 @@ The iPhone's sound and video go only from the iPhone to this computer, over Wi-F
 To find and fix problems, Koala sends crash reports and diagnostics to Sentry (Functional Software, Inc., sentry.io), a service that stores them on our behalf:
 
 - **Errors and crash reports:** what went wrong and where in Koala's code.
-- **Usage statistics:** when Koala starts and stops, its requests to Warlock (which kind, how long they took and how they went), and each connection to the iPhone: microphone or camera, how long it lasted, and how it ended.
+- **Usage statistics:** when Koala starts and stops, and each connection to the iPhone: microphone or camera, how long it lasted, and how it ended.
 - **This computer:** Koala's and Warlock's versions, the Windows version, the processor, the amount of memory, and whether its Wi-Fi and Bluetooth adapters are present and on.
 - **The iPhone:** its model and iOS version only (for example "iPhone18,1, 24B156").
 

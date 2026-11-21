@@ -103,7 +103,7 @@ pub struct Options {
 pub async fn run(options: Options) -> Result<(), String> {
     let run_for = options.wait.unwrap_or(FOREVER);
     let warlock = Client::new(PIPE);
-    let info = diagnostics::request("GET", "/v1/info", warlock.info()).await.map_err(|e| format!("Warlock: {e}"))?;
+    let info = warlock.info().await.map_err(|e| format!("Warlock: {e}"))?;
     diagnostics::warlock(&info);
     if !info.requestable.iter().any(|s| s == RDLINK) {
         return Err(format!(
@@ -123,9 +123,7 @@ pub async fn run(options: Options) -> Result<(), String> {
     // IRK (`altIRK`), and holds the request for the run.
     // Without the needs-keyboard flag, which an iPhone doesn't need (trial 25).
     let ask = ServiceRequest { service: RDLINK.into(), reason: "Koala guest pairing".into(), ..Default::default() };
-    let mut request = diagnostics::request("POST", "/v1/request", warlock.request(&ask))
-        .await
-        .map_err(|e| format!("Warlock: {e}"))?;
+    let mut request = warlock.request(&ask).await.map_err(|e| format!("Warlock: {e}"))?;
     let irk_hex = asked_identity(&mut request).await?;
     let irk = parse_irk(&irk_hex).ok_or("Warlock gave an IRK Koala can't read")?;
     diagnostics::step("guest: Warlock is asking for the iPhone's RDLink");
@@ -180,12 +178,8 @@ pub async fn run(options: Options) -> Result<(), String> {
     let _registration = Registration::register(adapter.index, &instance, &host, adapter.address, port, &txt)?;
     println!("registered {instance} at {host}:{port}, TXT {txt:?}");
 
-    let mut advertising = diagnostics::request("POST", "/v1/advertising", warlock.advertise(RDLINK))
-        .await
-        .map_err(|e| format!("Warlock: {e}"))?;
-    let mut hold = diagnostics::request("POST", "/v1/holds", warlock.hold("Koala guest pairing"))
-        .await
-        .map_err(|e| format!("Warlock: {e}"))?;
+    let mut advertising = warlock.advertise(RDLINK).await.map_err(|e| format!("Warlock: {e}"))?;
+    let mut hold = warlock.hold("Koala guest pairing").await.map_err(|e| format!("Warlock: {e}"))?;
 
     let url = format!(
         "continuitycamera://connect?_pubID={public_id}&_pinC={pin}&_pi={pairing_id}&model={MODEL}&_rdsr={START_REASON}"
@@ -410,7 +404,7 @@ async fn phase_b(
     let started = Instant::now();
     let mut last = String::new();
     while started.elapsed() < PHASE_B_WAIT {
-        match diagnostics::request("GET", "/v1/peers/{address}", warlock.peer(&mac)).await {
+        match warlock.peer(&mac).await {
             Ok(seen) => {
                 let records = format!("{:?}", seen.services.records);
                 if records != last {
@@ -458,7 +452,7 @@ impl RealtimeGroup {
     /// `None` if Warlock refuses, as it does while another program holds a
     /// group with another peer: the session then runs without LLW.
     async fn hold(warlock: &Client, mac: &str) -> Option<Self> {
-        match diagnostics::request("POST", "/v1/realtime", warlock.realtime(mac, "Koala microphone")).await {
+        match warlock.realtime(mac, "Koala microphone").await {
             Ok(mut lines) => Some(Self(tokio::spawn(async move {
                 let mut last = String::new();
                 while let Some(Ok(state)) = lines.next_value().await {

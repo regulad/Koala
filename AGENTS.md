@@ -33,8 +33,9 @@ breaks the promise without anyone noticing.
   Koala's console output (frame dumps, pairing IDs) never goes to Sentry.
 - Anything that does go out passes through `redact`; keep its test cases
   growing with what you've seen leak elsewhere.
-- Name request transactions by the contract's path (`/v1/peers/{address}`),
-  never the request's.
+- Transactions are capture sessions with the iPhone only, named by their
+  kind (`microphone`, `camera`); Koala's requests to Warlock aren't, since
+  Warlock reports its own (Parker, 2026-11-21).
 - `DO_NOT_TRACK` turns everything off; nothing may bypass it.
 - `nothing_identifying_leaves` sends through the real SDK: run it, and
   `KOALA_SHOW_DIAGNOSTICS=1 cargo test -p koala nothing_identifying --
