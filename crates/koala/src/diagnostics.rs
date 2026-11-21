@@ -30,10 +30,10 @@ use sentry::{SessionMode, TransactionContext};
 use warlock_client::ClientError;
 use warlock_client::types::Info;
 
-/// Koala's Sentry project (`regulad/koala`). A DSN only lets a client send
-/// events, so it isn't a secret (as RosellaView and PepperCord hold). Empty
-/// until the project exists: nothing is sent.
-pub const DSN: &str = "";
+/// Koala's Sentry project (`regulad/koala`, made by the homelab's
+/// `tofu/sentry`, 2026-11-21). A DSN only lets a client send events, so it
+/// isn't a secret (as RosellaView and PepperCord hold).
+pub const DSN: &str = "https://cfbcf885ffbfc512dacd4b1c446dbac6@o4506961510596608.ingest.us.sentry.io/4512468117225473";
 
 /// The commit Koala was built from (`build.rs`), if known.
 const COMMIT: Option<&str> = option_env!("KOALA_COMMIT");
