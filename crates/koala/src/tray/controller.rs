@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 use tokio::task::{JoinError, JoinHandle};
+use warlock_client::types::{BluetoothState, Info, RadioState};
 use warlock_client::{Client, PIPE};
 
 use crate::guest::{self, Event, Options, Report};
@@ -20,6 +21,9 @@ const UNNAMED: &str = "iPhone";
 pub enum Status {
     /// Warlock's API doesn't answer (not running, or no access to it).
     Unavailable,
+    /// Warlock answers, but this computer lacks something a connection
+    /// needs, as Warlock reports it.
+    Missing(Missing),
     Disconnected,
     /// An iPhone has paired; its audio hasn't arrived yet.
     Connecting(String),
@@ -27,10 +31,25 @@ pub enum Status {
     Connected(String),
 }
 
+/// What a connection needs that Warlock reports missing.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Missing {
+    /// No Wi-Fi adapter for Warlock's radio (`radio.state` `absent`).
+    WiFi,
+    /// No Bluetooth adapter, or one without LE extended advertising, which
+    /// Warlock's ask for the iPhone needs.
+    Bluetooth5,
+    /// The Bluetooth adapter's radio is off.
+    BluetoothOn,
+}
+
 impl Status {
     pub fn heading(&self) -> String {
         match self {
             Status::Unavailable => "Warlock service unavailable".into(),
+            Status::Missing(Missing::WiFi) => "No Wi-Fi adapter for Warlock".into(),
+            Status::Missing(Missing::Bluetooth5) => "No Bluetooth 5 adapter".into(),
+            Status::Missing(Missing::BluetoothOn) => "Bluetooth is off".into(),
             Status::Disconnected => "Disconnected".into(),
             Status::Connecting(name) => format!("Connecting to {name}…"),
             Status::Connected(name) => format!("Connected to {name}"),
@@ -40,6 +59,22 @@ impl Status {
     /// Whether Connect starts something: only from Disconnected.
     pub fn can_connect(&self) -> bool {
         *self == Status::Disconnected
+    }
+
+    /// The status while nothing runs, from what Warlock reports: the Wi-Fi
+    /// adapter first, then Bluetooth. A Warlock that doesn't report
+    /// Bluetooth (before 0.2.5) is taken at its word on the radio alone.
+    pub fn idle(info: &Info) -> Status {
+        if info.radio.state == RadioState::Absent {
+            return Status::Missing(Missing::WiFi);
+        }
+        match info.bluetooth {
+            Some(b) if b.state == BluetoothState::Absent || !b.extended_advertising => {
+                Status::Missing(Missing::Bluetooth5)
+            }
+            Some(b) if b.state != BluetoothState::On => Status::Missing(Missing::BluetoothOn),
+            _ => Status::Disconnected,
+        }
     }
 }
 
@@ -142,9 +177,8 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
             }
             _ = poll.tick(), if task.is_none() => match Client::new(PIPE).info().await {
                 Ok(info) => {
-                    if view.status == Status::Unavailable {
-                        view.status = Status::Disconnected;
-                    }
+                    // Nothing runs, so the row is the idle one.
+                    view.status = Status::idle(&info);
                     view.warlock = Some(info.version);
                 }
                 Err(_) => view.status = Status::Unavailable,
@@ -198,7 +232,62 @@ mod tests {
     fn connect_is_only_offered_when_disconnected() {
         assert!(Status::Disconnected.can_connect());
         assert!(!Status::Unavailable.can_connect());
+        assert!(!Status::Missing(Missing::WiFi).can_connect());
+        assert!(!Status::Missing(Missing::Bluetooth5).can_connect());
+        assert!(!Status::Missing(Missing::BluetoothOn).can_connect());
         assert!(!Status::Connecting("x".into()).can_connect());
         assert!(!Status::Connected("x".into()).can_connect());
+    }
+
+    /// What's missing, as Warlock reports it: the Wi-Fi adapter first, then
+    /// Bluetooth; a Warlock that doesn't report Bluetooth isn't held to it.
+    #[test]
+    fn the_idle_row_says_what_warlock_reports_missing() {
+        use warlock_client::types::{Awdl, Bluetooth, Radio};
+        let info = |radio: RadioState, bluetooth: Option<(BluetoothState, bool)>| Info {
+            version: "0.2.5".into(),
+            host_name: "pc".into(),
+            adapter: None,
+            radio: Radio { state: radio, address: None, channel: None, width_mhz: None },
+            awdl: Awdl { master: None, peers: 0 },
+            traffic: None,
+            requestable: vec!["_rdlink._tcp".into()],
+            bluetooth: bluetooth.map(|(state, extended_advertising)| Bluetooth { state, extended_advertising }),
+        };
+        let on = Some((BluetoothState::On, true));
+        assert_eq!(Status::idle(&info(RadioState::Up, on)), Status::Disconnected);
+        assert_eq!(Status::idle(&info(RadioState::Opening, on)), Status::Disconnected);
+        assert_eq!(Status::idle(&info(RadioState::Absent, on)), Status::Missing(Missing::WiFi));
+        assert_eq!(
+            Status::idle(&info(RadioState::Absent, Some((BluetoothState::Absent, false)))),
+            Status::Missing(Missing::WiFi),
+            "Wi-Fi first"
+        );
+        assert_eq!(
+            Status::idle(&info(RadioState::Up, Some((BluetoothState::Absent, false)))),
+            Status::Missing(Missing::Bluetooth5)
+        );
+        assert_eq!(
+            Status::idle(&info(RadioState::Up, Some((BluetoothState::On, false)))),
+            Status::Missing(Missing::Bluetooth5),
+            "Bluetooth without LE extended advertising"
+        );
+        assert_eq!(
+            Status::idle(&info(RadioState::Up, Some((BluetoothState::Off, true)))),
+            Status::Missing(Missing::BluetoothOn)
+        );
+        assert_eq!(
+            Status::idle(&info(RadioState::Up, Some((BluetoothState::Unknown, true)))),
+            Status::Missing(Missing::BluetoothOn),
+            "a state Koala doesn't know isn't on"
+        );
+        assert_eq!(Status::idle(&info(RadioState::Up, None)), Status::Disconnected, "a Warlock before 0.2.5");
+    }
+
+    #[test]
+    fn the_missing_rows_read_as_asked() {
+        assert_eq!(Status::Missing(Missing::WiFi).heading(), "No Wi-Fi adapter for Warlock");
+        assert_eq!(Status::Missing(Missing::Bluetooth5).heading(), "No Bluetooth 5 adapter");
+        assert_eq!(Status::Missing(Missing::BluetoothOn).heading(), "Bluetooth is off");
     }
 }

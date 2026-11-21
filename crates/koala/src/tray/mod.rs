@@ -5,7 +5,9 @@
 //! for a right-click; a left click, which it only reports, opens it through
 //! the same message ([`display::open_icon_menu`]):
 //! - "Koala", and a separator;
-//! - the status: "Warlock service unavailable", "Disconnected",
+//! - the status: "Warlock service unavailable"; what Warlock reports
+//!   missing, while nothing runs ("No Wi-Fi adapter for Warlock", "No
+//!   Bluetooth 5 adapter", "Bluetooth is off"); "Disconnected",
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
 //! - a separator, then Options (a submenu: "Start on logon", on or off,
