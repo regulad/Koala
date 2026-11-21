@@ -1,6 +1,12 @@
-//! Copies the FFmpeg DLLs that Koala links (`FFMPEG_DIR`, set in
-//! `.cargo/config.toml`, fetched by `tools/ffmpeg.ps1`) beside its programs
-//! and tests, where Windows looks for them first.
+//! Puts the FFmpeg DLLs that Koala links (`FFMPEG_DIR`, set in
+//! `.cargo/config.toml`, fetched by `tools/ffmpeg.ps1`) where Windows finds
+//! them for every program and test, whichever build-directory layout Cargo
+//! uses (Cargo 1.100 moved tests out of `deps`):
+//! - in this script's `OUT_DIR`, declared as a native library search path,
+//!   which Cargo puts on `PATH` for whatever it runs (`cargo test`,
+//!   `cargo run`): its directories inside the target directory;
+//! - beside the programs in `target/<profile>` and its `examples`, for
+//!   running them directly, and for packaging.
 
 use std::path::{Path, PathBuf};
 use std::{env, fs};
@@ -16,18 +22,29 @@ fn main() {
     };
     let dlls: Vec<PathBuf> =
         entries.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "dll")).collect();
-    // OUT_DIR is target/<profile>/build/koala-<hash>/out: the profile's
-    // directory holds the programs, and its deps and examples the rest.
     let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
-    let Some(profile) = out.ancestors().nth(3) else { return };
-    for dir in [profile.to_path_buf(), profile.join("deps"), profile.join("examples")] {
-        let _ = fs::create_dir_all(&dir);
-        for dll in &dlls {
-            let to = dir.join(dll.file_name().expect("a file"));
-            let same = fs::metadata(&to).and_then(|t| Ok(t.len() == fs::metadata(dll)?.len())).unwrap_or(false);
-            if !same && let Err(e) = fs::copy(dll, &to) {
-                println!("cargo:warning=copying {} to {}: {e}", dll.display(), to.display());
-            }
+    copy(&dlls, &out);
+    println!("cargo:rustc-link-search=native={}", out.display());
+    // OUT_DIR is under target/<profile>/build (target/<profile>/build/
+    // koala-<hash>/out before Cargo 1.100, target/<profile>/build/koala/
+    // <hash>/out since): the profile's directory holds the programs.
+    let Some(profile) = out.ancestors().find(|a| a.file_name().is_some_and(|n| n == "build")).and_then(Path::parent)
+    else {
+        println!("cargo:warning=no target/<profile> above {}: the programs won't find FFmpeg", out.display());
+        return;
+    };
+    copy(&dlls, profile);
+    copy(&dlls, &profile.join("examples"));
+}
+
+/// Copies `dlls` into `dir`, skipping those already there at the same size.
+fn copy(dlls: &[PathBuf], dir: &Path) {
+    let _ = fs::create_dir_all(dir);
+    for dll in dlls {
+        let to = dir.join(dll.file_name().expect("a file"));
+        let same = fs::metadata(&to).and_then(|t| Ok(t.len() == fs::metadata(dll)?.len())).unwrap_or(false);
+        if !same && let Err(e) = fs::copy(dll, &to) {
+            println!("cargo:warning=copying {} to {}: {e}", dll.display(), to.display());
         }
     }
 }
