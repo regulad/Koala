@@ -37,6 +37,24 @@ breaks the promise without anyone noticing.
   kind (`microphone`, `camera`); Koala's requests to Warlock aren't, since
   Warlock reports its own (Parker, 2026-11-21).
 - `DO_NOT_TRACK` turns everything off; nothing may bypass it.
+- Only a release has the DSN built in. A trial that should report builds
+  with `KOALA_DIAGNOSTICS=1`; nothing else turns it on.
 - `nothing_identifying_leaves` sends through the real SDK: run it, and
   `KOALA_SHOW_DIAGNOSTICS=1 cargo test -p koala nothing_identifying --
   --nocapture` shows what would leave.
+
+## Check the open issues with every commit
+
+Before each commit, look through the open issues (`gh issue list`), this
+repository's and Warlock's, for any the commit completes or advances, and
+name them in its message (Parker, 2026-11-21):
+
+- `Fixes #N` for one it completes: GitHub closes the issue when the commit
+  reaches `master`. For one of Warlock's, `Fixes regulad/Warlock#N`.
+- `#N` for one it only advances.
+- Where it does what the issue asked another way, or leaves part of it, the
+  message says how and why, so the issue's closing records it.
+
+**Why:** Warlock's diagnostics did what Warlock's #1 asked, over several
+commits, and none of them named it, so it stayed open with nothing tying it
+to the work.

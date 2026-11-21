@@ -16,9 +16,10 @@ off, or without the Bluetooth 5 features it needs.
 
 ## Privacy
 
-Koala sends crash reports and diagnostics to Sentry, without anything that
-identifies you, this computer or the iPhone: [`PRIVACY.md`](PRIVACY.md) says
-what. Set `DO_NOT_TRACK=1` and it sends nothing.
+Koala's releases send crash reports and diagnostics to Sentry, without
+anything that identifies you, this computer or the iPhone:
+[`PRIVACY.md`](PRIVACY.md) says what. Set `DO_NOT_TRACK=1` and it sends
+nothing.
 
 **Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
 and where each part stands.
@@ -39,6 +40,9 @@ pwsh tools/ffmpeg.ps1
 cargo build --release
 cargo test --workspace
 ```
+
+A build from source sends no diagnostics: only a release's has Sentry's
+address built in. To try them, build with `KOALA_DIAGNOSTICS=1` set.
 
 ## Licence
 

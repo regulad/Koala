@@ -2,8 +2,12 @@
 //! with nothing that identifies the user, this computer or the iPhone
 //! (`PRIVACY.md`; Parker, 2026-11-20, after RosellaView's).
 //!
+//! - **Only in releases:** a tagged build has the DSN built in, as does one
+//!   built with `KOALA_DIAGNOSTICS=1`, for a trial. Any other, from source
+//!   or a `testing` run, has none and sends nothing (Parker, 2026-11-21, as
+//!   Warlock's #1 asked of Warlock).
 //! - **Off** when `DO_NOT_TRACK` is set (to anything but empty, `0` or
-//!   `false`), and while [`DSN`] is empty.
+//!   `false`).
 //! - **Sent:**
 //!   - panics, and the errors that end a run or a session;
 //!   - a session per run of a program, for release health;
@@ -30,12 +34,19 @@ use warlock_client::types::Info;
 /// Koala's Sentry project (`regulad/koala`, made by the homelab's
 /// `tofu/sentry`, 2026-11-21). A DSN only lets a client send events, so it
 /// isn't a secret (as RosellaView and PepperCord hold).
-pub const DSN: &str = "https://cfbcf885ffbfc512dacd4b1c446dbac6@o4506961510596608.ingest.us.sentry.io/4512468117225473";
+const PROJECT: &str = "https://cfbcf885ffbfc512dacd4b1c446dbac6@o4506961510596608.ingest.us.sentry.io/4512468117225473";
+
+/// The DSN this build sends to: [`PROJECT`] in a release or a trial's build
+/// (`build.rs`), and none in any other.
+pub const DSN: &str = if TAGGED || TRIAL { PROJECT } else { "" };
 
 /// The commit Koala was built from (`build.rs`), if known.
 const COMMIT: Option<&str> = option_env!("KOALA_COMMIT");
 /// Whether this is a tagged release build (`build.rs`).
 const TAGGED: bool = option_env!("KOALA_TAGGED").is_some();
+/// Whether this build was made with `KOALA_DIAGNOSTICS=1`, for a trial
+/// (`build.rs`).
+const TRIAL: bool = option_env!("KOALA_DIAGNOSTICS_TRIAL").is_some();
 
 /// `koala@<version>`, with `+<commit>` for any build but a tagged one.
 pub fn release() -> String {
@@ -64,14 +75,15 @@ pub struct Diagnostics {
     _guard: Option<sentry::ClientInitGuard>,
 }
 
-/// Starts diagnostics for `program` (`koala`, `koala-tray`), unless
-/// `DO_NOT_TRACK` says not to or there's no DSN.
+/// Starts diagnostics for `program` (`koala`, `koala-tray`), if this build
+/// has a DSN and `DO_NOT_TRACK` doesn't say not to.
 pub fn start(program: &'static str) -> Diagnostics {
-    if do_not_track(std::env::var("DO_NOT_TRACK").ok().as_deref()) {
-        println!("{program}: DO_NOT_TRACK is set, so no diagnostics are sent");
+    if DSN.is_empty() {
+        println!("{program}: this build isn't a release, so no diagnostics are sent");
         return Diagnostics { _guard: None };
     }
-    if DSN.is_empty() {
+    if do_not_track(std::env::var("DO_NOT_TRACK").ok().as_deref()) {
+        println!("{program}: DO_NOT_TRACK is set, so no diagnostics are sent");
         return Diagnostics { _guard: None };
     }
     let guard = sentry::init(options(program, DSN.parse().ok()));
@@ -397,6 +409,11 @@ mod tests {
         for off in [None, Some(""), Some("0"), Some("false"), Some("FALSE"), Some("  ")] {
             assert!(!do_not_track(off), "{off:?}");
         }
+    }
+
+    #[test]
+    fn only_a_release_or_a_trial_has_the_dsn() {
+        assert_eq!(DSN.is_empty(), !TAGGED && !TRIAL);
     }
 
     #[test]

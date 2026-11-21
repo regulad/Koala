@@ -10,7 +10,8 @@
 //!
 //! It also tells the diagnostics (`src/diagnostics.rs`) what they name the
 //! release after: the commit (`KOALA_COMMIT`), and whether this is a tagged
-//! build (`KOALA_TAGGED`, from GitHub's runner).
+//! build (`KOALA_TAGGED`, from GitHub's runner); and whether to build them in
+//! for a trial (`KOALA_DIAGNOSTICS=1` when building).
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -43,11 +44,16 @@ fn main() {
     copy(&dlls, &profile.join("examples"));
 }
 
-/// The commit, and whether GitHub's runner is building a tag.
+/// The commit, whether GitHub's runner is building a tag, and whether a
+/// build that isn't one should send diagnostics anyway, for a trial.
 fn release() {
     println!("cargo:rerun-if-env-changed=GITHUB_REF_TYPE");
     if env::var("GITHUB_REF_TYPE").as_deref() == Ok("tag") {
         println!("cargo:rustc-env=KOALA_TAGGED=1");
+    }
+    println!("cargo:rerun-if-env-changed=KOALA_DIAGNOSTICS");
+    if env::var("KOALA_DIAGNOSTICS").as_deref() == Ok("1") {
+        println!("cargo:rustc-env=KOALA_DIAGNOSTICS_TRIAL=1");
     }
     let Some(manifest) = env::var_os("CARGO_MANIFEST_DIR") else { return };
     let root = Path::new(&manifest).join("..").join("..");

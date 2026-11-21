@@ -10,7 +10,7 @@ The iPhone's sound and video go only from the iPhone to this computer, over Wi-F
 
 ## Diagnostics
 
-To find and fix problems, Koala sends crash reports and diagnostics to Sentry (Functional Software, Inc., sentry.io), a service that stores them on our behalf:
+To find and fix problems, Koala's releases send crash reports and diagnostics (a build of Koala from its source code sends none) to Sentry (Functional Software, Inc., sentry.io), a service that stores them on our behalf, in the United States:
 
 - **Errors and crash reports:** what went wrong and where in Koala's code.
 - **Usage statistics:** when Koala starts and stops, and each connection to the iPhone: microphone or camera, how long it lasted, and how it ended.
