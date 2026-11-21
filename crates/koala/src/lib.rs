@@ -9,15 +9,12 @@
 //! Warlock, and the capture session that follows. They need Warlock running,
 //! and Administrator rights or membership of `warlock-users`.
 
-mod ble;
 pub mod camera;
 pub mod capture;
 mod dnssd;
 pub mod guest;
-mod hci;
 pub mod mic;
 mod mkv;
-mod nearby;
 pub mod tray;
 
 /// A random (version 4) UUID, as `-[NSUUID UUIDString]` writes one:

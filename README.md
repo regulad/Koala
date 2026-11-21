@@ -9,6 +9,9 @@ Wireless Direct Link (AWDL), which [Warlock](https://github.com/regulad/Warlock)
 gives Windows. Each of the iPhone's microphones becomes a Windows
 microphone of its own, which other programs record from.
 
+Koala needs Warlock 0.2.4 or later, and what Warlock needs, a Bluetooth LE
+adapter included: Warlock asks the iPhone onto AWDL over Bluetooth LE.
+
 **Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
 and where each part stands.
 

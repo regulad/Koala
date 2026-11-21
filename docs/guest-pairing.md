@@ -799,6 +799,34 @@ Static analysis of the multi-peer case:
   than the QR's, and started neither its NeedsAWDL advertiser nor its AWDL
   browser, as it had in trial 20. Restarting the iPhone cleared it.
 
+## The ask moves to Warlock (2026-11-20, trials 25–26)
+
+Phase B's Bluetooth LE advert, the Nearby Action "RDLink needs AWDL", is now
+Warlock's (`POST /v1/request`, Warlock 0.2.4). Koala asks for `_rdlink._tcp`,
+and Warlock builds and sends the advert, reads its address from the HCI
+trace, and gives Koala an IRK chosen to fit the advert's tag. Koala pairs with
+that IRK as `altIRK`, as before, and holds the request for the run. The HCI
+trace was the one thing that needed Administrator rights, so Koala now runs
+as a member of `warlock-users`.
+
+Warlock leaves the needs-keyboard flag off unless asked for it. The two
+trials, each recording the camera for 60 s, were meant to compare the flag
+on and off:
+
+- **Trial 25, without it (`80 32 <tag>`).** The iPhone came onto AWDL at the
+  scan. sharingd read the advert as `NeedsRDLink … NeedsAWDL`, and after
+  pairing identified its sender as the session-paired device
+  (`Identification identified device … Type SessionPaired`). 106 ms later the
+  iPhone's AWDL frames carried its RDLink instance. The session recorded
+  1,666 pictures.
+- **Trial 26, with it (`a0 32 <tag>`).** The session recorded 1,748 pictures,
+  but the trial doesn't test the flag. The iPhone was still advertising its
+  RDLink from trial 25, with the same instance and counter, 40 s before the
+  scan, and Koala connected before sharingd had identified the new advert.
+  So the iPhone keeps its RDLink advertised for minutes after a session.
+
+So an iPhone doesn't need the flag. What it does stays unknown.
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -811,7 +839,9 @@ Static analysis of the multi-peer case:
   model `AppleTV14,1` and a name. Keep the iPhone's identity (its Ed25519 key
   and IRK) for Phase B.
 - **Then:**
-  1. get the iPhone onto AWDL;
+  1. get the iPhone onto AWDL: from the start of the run, hold a Warlock
+     request for `_rdlink._tcp` (`POST /v1/request`), and pair with the IRK
+     it gives;
   2. connect to its `_rdlink._tcp`;
   3. pair-verify;
   4. open a `com.apple.continuitycapture` RemoteDisplay session in mic-only

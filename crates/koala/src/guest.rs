@@ -20,10 +20,11 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinSet;
 use warlock_client::{Client, PIPE};
 
-use crate::ble::Advert;
+use warlock_client::Lines;
+use warlock_client::types::{ServiceRequest, ServiceRequestState};
+
 use crate::capture::Local;
 use crate::dnssd::Registration;
-use crate::hci::HciTrace;
 
 /// The ProductType Koala claims while pairing: an Apple TV 4K (3rd
 /// generation), whose tvOS 27 offers guest pairing. (The capture session
@@ -44,6 +45,10 @@ const GUEST_PAIRING_SERVICE: &str = "com.apple.ddui.guestpairing";
 /// The Rapport service of a Continuity Capture session (`_clSrv`), whose
 /// RemoteDisplay session start launches the iPhone's capture daemon.
 const CAPTURE_SERVICE: &str = "com.apple.continuitycapture";
+/// The service Koala hosts, and asks the iPhone for in Phase B.
+const RDLINK: &str = "_rdlink._tcp";
+/// How long Warlock has to start asking for the iPhone's RDLink.
+const ASK_WAIT: Duration = Duration::from_secs(30);
 /// How long Phase B waits for the iPhone's RDLink listener to show up.
 const PHASE_B_WAIT: Duration = Duration::from_secs(90);
 /// "Until cancelled", as a wait: a century.
@@ -98,30 +103,28 @@ pub async fn run(options: Options) -> Result<(), String> {
     let run_for = options.wait.unwrap_or(FOREVER);
     let warlock = Client::new(PIPE);
     let info = warlock.info().await.map_err(|e| format!("Warlock: {e}"))?;
+    if !info.requestable.iter().any(|s| s == RDLINK) {
+        return Err(format!(
+            "Warlock {} can't ask an iPhone onto AWDL; Koala needs Warlock 0.2.4 or later",
+            info.version
+        ));
+    }
     let adapter = info.adapter.ok_or("Warlock has no network adapter yet")?;
     println!(
         "Warlock {}: {} (interface {}) at {}, radio {:?}",
         info.version, adapter.name, adapter.index, adapter.address, info.radio.state
     );
 
-    // Phase B's BLE advert starts now, before pairing. Windows gives an advert
-    // its random address only after its data is fixed, so the advert can't be
-    // tagged for Koala's IRK; instead Koala reads the address from the HCI
-    // trace and chooses the IRK it will pair with to fit the advert's tag.
-    let mut tag = [0u8; 3];
-    crate::random(&mut tag);
-    let needs_awdl = crate::nearby::needs_awdl(&tag);
-    let trace = HciTrace::start()?;
-    let _advert = Advert::start(&needs_awdl).map_err(|e| format!("BLE: {e}"))?;
-    let sent = [&[0xff, 0x4c, 0x00][..], &needs_awdl].concat();
-    let (set, ble_address) = trace
-        .advert_address(&sent, Duration::from_secs(5))
-        .ok_or("BLE: the HCI trace didn't show the advert's address")?;
-    drop(trace);
-    let irk = crate::nearby::irk_for(&ble_address, &tag);
-    let shown = ble_address.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(":");
-    let hex: String = needs_awdl.iter().map(|b| format!("{b:02x}")).collect();
-    println!("BLE: broadcasting 4c00{hex} from {shown} (advertising set {set}); IRK chosen to match");
+    // Phase B's ask starts now, before pairing: Warlock asks over Bluetooth
+    // LE for the iPhone's RDLink on AWDL (`POST /v1/request`), in an advert
+    // whose sender the IRK it gives back identifies. Koala pairs with that
+    // IRK (`altIRK`), and holds the request for the run.
+    // Without the needs-keyboard flag, which an iPhone doesn't need (trial 25).
+    let ask = ServiceRequest { service: RDLINK.into(), reason: "Koala guest pairing".into(), ..Default::default() };
+    let mut request = warlock.request(&ask).await.map_err(|e| format!("Warlock: {e}"))?;
+    let irk_hex = asked_identity(&mut request).await?;
+    let irk = parse_irk(&irk_hex).ok_or_else(|| format!("Warlock gave an IRK Koala can't read: {irk_hex:?}"))?;
+    println!("Warlock is asking for the iPhone's RDLink over Bluetooth LE; pairing with the IRK it chose");
 
     // Who Koala is to the iPhone: a UUID identifier (the QR's `_pubID`), a
     // key pair, and CoreUtils' info block with that IRK, a model and a name.
@@ -172,7 +175,7 @@ pub async fn run(options: Options) -> Result<(), String> {
     let _registration = Registration::register(adapter.index, &instance, &host, adapter.address, port, &txt)?;
     println!("registered {instance} at {host}:{port}, TXT {txt:?}");
 
-    let mut advertising = warlock.advertise("_rdlink._tcp").await.map_err(|e| format!("Warlock: {e}"))?;
+    let mut advertising = warlock.advertise(RDLINK).await.map_err(|e| format!("Warlock: {e}"))?;
     let mut hold = warlock.hold("Koala guest pairing").await.map_err(|e| format!("Warlock: {e}"))?;
 
     let url = format!(
@@ -190,6 +193,7 @@ pub async fn run(options: Options) -> Result<(), String> {
     let deadline = tokio::time::sleep_until(end);
     tokio::pin!(deadline);
     let mut last_advertising = String::new();
+    let mut last_request = String::new();
     loop {
         tokio::select! {
             accepted = listener.accept() => {
@@ -235,6 +239,18 @@ pub async fn run(options: Options) -> Result<(), String> {
             line = hold.next_value() => if line.is_none() {
                 return Err("Warlock closed the hold".into());
             },
+            line = request.next::<ServiceRequestState>() => match line {
+                Some(Ok(state)) => {
+                    let now = state.identity.as_ref().and_then(|i| i.irk.as_deref()) == Some(irk_hex.as_str());
+                    let said = format!("asking {}, {}", state.asking, state.message.as_deref().unwrap_or("no message"));
+                    if !now && said != last_request {
+                        println!("Warlock's Bluetooth ask changed ({said}): an iPhone paired before no longer knows Koala");
+                    }
+                    last_request = said;
+                }
+                Some(Err(e)) => return Err(format!("Warlock: {e}")),
+                None => return Err("Warlock closed the request".into()),
+            },
             _ = tokio::signal::ctrl_c(), if options.terminal => break,
             _ = &mut deadline => {
                 println!("giving up after {} s", run_for.as_secs());
@@ -243,6 +259,34 @@ pub async fn run(options: Options) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Waits for Warlock to be asking, and gives the IRK it chose (hex).
+async fn asked_identity(request: &mut Lines) -> Result<String, String> {
+    let mut said = None;
+    let wait = async {
+        while let Some(line) = request.next::<ServiceRequestState>().await {
+            let state = line.map_err(|e| format!("Warlock: {e}"))?;
+            if state.message.is_some() && state.message != said {
+                println!("Warlock: {}", state.message.as_deref().unwrap_or_default());
+                said = state.message.clone();
+            }
+            if let Some(irk) = state.identity.and_then(|i| i.irk).filter(|_| state.asking) {
+                return Ok(irk);
+            }
+        }
+        Err("Warlock closed the request".to_string())
+    };
+    tokio::time::timeout(ASK_WAIT, wait)
+        .await
+        .map_err(|_| format!("Warlock didn't start asking over Bluetooth within {} s", ASK_WAIT.as_secs()))?
+}
+
+/// An IRK in hex.
+fn parse_irk(hex: &str) -> Option<[u8; 16]> {
+    let bytes: Vec<u8> =
+        (0..hex.len()).step_by(2).map(|i| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok()).collect::<Option<_>>()?;
+    bytes.try_into().ok()
 }
 
 /// One connection: pairing, then whatever the peer sends, until it closes.
