@@ -10,7 +10,8 @@ const NOTICES: &str = include_str!("../../data/third-party-notices.txt");
 const PRIVACY: &str = "To find and fix problems, Koala sends crash reports and diagnostics to Sentry (sentry.io): \
                        errors, usage statistics, Koala's and Warlock's versions, this computer's Windows version, \
                        processor and memory, and the iPhone's model and iOS version. Nothing that identifies you or \
-                       your devices is sent: no names, IDs or addresses. To send nothing, set the environment \
+                       your devices is sent: no names, IDs or addresses (Sentry notes only the city a report \
+                       came from, from its connection). To send nothing, set the environment \
                        variable DO_NOT_TRACK to 1. Privacy policy: https://github.com/regulad/Koala/blob/master/PRIVACY.md";
 
 #[derive(Clone, PartialEq)]

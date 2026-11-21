@@ -65,3 +65,9 @@ windows = "0.62.2"
 windows-reactor = { git = "https://github.com/microsoft/windows-rs", rev = "a344513ba514df30dc784f6969515302d5b011e6", version = "0.101.0" }
 windows-sys = "0.61.2"
 x25519-dalek = { version = "3.0.0", features = ["static_secrets"] }
+
+# Line tables in the release PDBs, which a tag's build uploads to Sentry, so
+# that a crash's frames name their files and lines (PLAN.md, "Diagnostics").
+# They don't change the code.
+[profile.release]
+debug = "line-tables-only"

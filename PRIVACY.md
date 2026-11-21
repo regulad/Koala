@@ -17,7 +17,7 @@ To find and fix problems, Koala sends crash reports and diagnostics to Sentry (F
 - **This computer:** Koala's and Warlock's versions, the Windows version, the processor, the amount of memory, and whether its Wi-Fi and Bluetooth adapters are present and on.
 - **The iPhone:** its model and iOS version only (for example "iPhone18,1, 24B156").
 
-Koala doesn't send names (yours, this computer's or the iPhone's), user or device IDs, network (MAC or IP) addresses, or anything else that identifies you or your devices, and our diagnostics service is set not to store IP addresses.
+Koala doesn't send names (yours, this computer's or the iPhone's), user or device IDs, network (MAC or IP) addresses, or anything else that identifies you or your devices, and our diagnostics service is set not to store IP addresses. It does note roughly where each report came from (the city, region and country), which it works out from the connection before discarding the address.
 
 This is used only to diagnose and improve Koala. It isn't sold, shared for advertising, or combined with other data. Sentry keeps it for up to 90 days.
 
