@@ -7,15 +7,15 @@
 
 <br>
 
-A full open-source implementation of Apple's closed-source Wombat feature, 
+A full open-source implementation of Apple's closed-source Wombat feature,
 better known as Continuity Camera. Koala's latency is on-par with Wombat.
 
 Koala provides a standard Microphone and Camera device that other Windows
-applications can use. Koala can be ported to other platforms; care has 
+applications can use. Koala can be ported to other platforms; care has
 been taken to limit the amount of code that ties it to Windows in the core.
 
-Koala works with Warlock to connect to your iPhone the same way a Mac 
-or Apple TV would. It doesn't need to contact Apple to provision an 
+Koala works with Warlock to connect to your iPhone the same way a Mac
+or Apple TV would. It doesn't need to contact Apple to provision an
 identity, and all communication is encrypted over-the-air.
 
 ## About
