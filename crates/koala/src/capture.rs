@@ -133,6 +133,13 @@ pub async fn run(
     // own, which salts its stream's SRTP key (`docs/guest-pairing.md`, "Both
     // at once").
     let mut configurations = vec![Configuration::microphone(uuid_v4(), 1)];
+    // The camera at 1920×1080, 30 a second. What the iPhone sends at that
+    // size stays level as the phone turns: it compensates, and so crops in
+    // close, even from the main camera (Parker, 2026-11-21, from the tray).
+    // It's left on (Parker). What does it isn't known: perhaps Center Stage
+    // or horizon levelling, which a Control SetValue (as
+    // `FaceDetectionEnabled`, `docs/guest-pairing.md`, "Both at once") might
+    // turn off. Untried.
     if camera::wanted() {
         configurations.push(Configuration::camera(uuid_v4(), 1, StreamFormat::hd_1080p30()));
     }
