@@ -20,6 +20,14 @@
 //! a picture. (Trial 30's crash began with a stream's Stop waiting on a
 //! locked device; the stream was the built-in camera's, and this source had
 //! been given no GPU then: `docs/virtual-camera.md`, "Tried".)
+//!
+//! A crash around the camera may not be this code's at all. A stream hung
+//! in Stop makes the camera service's watchdog ask for a live kernel dump,
+//! and while WSL's virtual machine runs, gathering the processors for one
+//! can stall until the DPC watchdog stops Windows (bugcheck 0x133, in
+//! `nt!IopLiveDumpCorralDpc` and `winhvr!WinHvpVpDispatchLoop`): Windows'
+//! own bug, microsoft/WSL#10843, and trial 30's crash. Look at a crash dump
+//! for those frames before suspecting this stream.
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};

@@ -25,8 +25,12 @@ pub const CLSID: GUID = GUID::from_u128(0x08227305_3597_4cca_b439_905a2395c9ef);
 /// alone ([`frames`]).
 pub const USER_SID: GUID = GUID::from_u128(0x0cc9895d_fee0_48d7_939a_b1ccb06b0d3d);
 
-/// The camera's name, as apps list it.
-pub const NAME: &str = "iPhone Camera (Koala)";
+/// The camera's name where there's no iPhone's to give it: apps list a
+/// camera by the name it's made with, and Koala's tray makes it as an
+/// iPhone pairs, named after it, as a Mac does (Parker, 2026-11-21).
+/// DirectShow apps see " (Windows Virtual Camera)" after it: Windows adds
+/// that.
+pub const DEFAULT_NAME: &str = "iPhone";
 
 /// The CLSID as the registry and `MFCreateVirtualCamera` write it.
 pub fn clsid_string() -> String {
@@ -54,17 +58,19 @@ pub struct VirtualCamera {
 }
 
 impl VirtualCamera {
-    /// Makes the camera and starts it. Fails where Windows is older than
-    /// Windows 11 (no `MFCreateVirtualCamera`), where the media source
-    /// isn't registered, or where the user doesn't allow apps the camera.
-    pub fn start() -> Result<Self, String> {
+    /// Makes the camera, called `name`, and starts it. Fails where Windows
+    /// is older than Windows 11 (no `MFCreateVirtualCamera`), where the
+    /// media source isn't registered, or where the user doesn't allow apps
+    /// the camera.
+    pub fn start(name: &str) -> Result<Self, String> {
         let sid = frames::current_user_sid()?;
+        let name = name.to_owned();
         let (started_tx, started_rx) = mpsc::channel();
         let (stop_tx, stop_rx) = mpsc::channel::<()>();
         let thread = std::thread::Builder::new()
             .name("virtual camera".into())
             .spawn(move || {
-                let camera = match make(&sid) {
+                let camera = match make(&name, &sid) {
                     Ok(camera) => {
                         let _ = started_tx.send(Ok(()));
                         camera
@@ -96,7 +102,7 @@ impl Drop for VirtualCamera {
     }
 }
 
-fn make(sid: &str) -> Result<IMFVirtualCamera, String> {
+fn make(name: &str, sid: &str) -> Result<IMFVirtualCamera, String> {
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.map_err(|e| format!("MFStartup: {e}"))?;
     // Looked up, not linked: Koala still starts on Windows 10, which has
@@ -107,7 +113,7 @@ fn make(sid: &str) -> Result<IMFVirtualCamera, String> {
         .ok_or("no virtual cameras on this Windows (MFCreateVirtualCamera)")?;
     // SAFETY: MFCreateVirtualCamera's signature (mfvirtualcamera.h).
     let create: CreateVirtualCamera = unsafe { std::mem::transmute(create) };
-    let (name, clsid) = (HSTRING::from(NAME), HSTRING::from(clsid_string()));
+    let (name, clsid) = (HSTRING::from(name), HSTRING::from(clsid_string()));
     let mut camera = None;
     unsafe {
         create(

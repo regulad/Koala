@@ -51,12 +51,15 @@ fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
     true
 }
 
-/// The virtual camera, made, or why not; the process ends if it can't be.
+/// The virtual camera, made for the whole run (the tray's comes and goes
+/// with the iPhone, and has its name), or why not; the process ends if it
+/// can't be.
 fn virtual_camera() -> VirtualCamera {
-    match VirtualCamera::start() {
+    let name = koala_vcam::DEFAULT_NAME;
+    match VirtualCamera::start(name) {
         Ok(camera) => {
             vcam::ON.store(true, Ordering::Relaxed);
-            println!("vcam: \"{}\" is up, for apps to open", koala_vcam::NAME);
+            println!("vcam: \"{name}\" is up, for apps to open");
             camera
         }
         Err(e) => {

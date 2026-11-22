@@ -11,13 +11,20 @@
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
 //! - a separator, then Options (a submenu, each item on or off: "Start on
-//!   logon", [`startup`]; "Force software decoding", for the camera,
+//!   logon", [`startup`]; "Stream camera" and "Force software decoding",
 //!   [`crate::settings`]), About, which opens About Koala ([`about`]), and
 //!   Quit.
 //!
 //! Reactor's menu items are plain text for now, so the status row is the
 //! menu's own size and About has no icon (Parker's choice, 2026-11-20:
 //! Reactor, with its limits).
+//!
+//! While an iPhone is connected, and "Stream camera" is on (its default),
+//! Windows has Koala's camera ([`crate::vcam`]; `docs/virtual-camera.md`),
+//! named after the iPhone, as a Mac has it (Parker, 2026-11-21): it appears
+//! as the iPhone pairs, before its camera stream starts, and goes when the
+//! connection ends, as a webcam unplugged does. With it off, or where it
+//! can't be made, sessions are the microphones alone.
 //!
 //! Connect starts a guest run ([`crate::guest`]) and shows its QR code
 //! ([`qr`]) until the iPhone is connected. Until the code is ready, the
@@ -71,6 +78,31 @@ pub fn run() -> Result<(), String> {
     App::run_application::<Tray>(()).map_err(|e| e.to_string())
 }
 
+/// The virtual camera, called `name` (`docs/virtual-camera.md`). Without it
+/// (its source not installed, or a Windows before 11), sessions are the
+/// microphones alone.
+fn camera(name: &str) -> Option<koala_vcam::VirtualCamera> {
+    match koala_vcam::VirtualCamera::start(name) {
+        Ok(camera) => {
+            crate::diagnostics::step("tray: the virtual camera is up");
+            println!("koala-tray: the camera \"{name}\" is up");
+            Some(camera)
+        }
+        Err(e) => {
+            crate::diagnostics::step("tray: no virtual camera");
+            println!("koala-tray: no virtual camera: {e}");
+            None
+        }
+    }
+}
+
+/// Whether sessions ask for the iPhone's camera: while "Stream camera" is
+/// on. The camera is made as the iPhone pairs, while the session sets out:
+/// the session goes by this, not by whether the camera is there yet.
+fn camera_wanted(on: bool) {
+    crate::vcam::ON.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 #[derive(Clone)]
 enum Message {
     /// The controller's latest view.
@@ -94,6 +126,12 @@ struct Tray {
     /// Whether the camera is decoded by FFmpeg, whatever Windows has
     /// ([`crate::settings`]).
     software_decoding: bool,
+    /// Whether the iPhone's camera is streamed to Koala's camera
+    /// ([`crate::settings`]); the camera, while an iPhone is connected; and
+    /// whether this connection has tried to make it (once each).
+    stream_camera: bool,
+    camera: Option<koala_vcam::VirtualCamera>,
+    camera_tried: bool,
     /// The cursor while the code is being made.
     busy: busy::Busy,
 }
@@ -127,6 +165,8 @@ impl Application for Tray {
         {
             println!("koala-tray: start on logon: {e}");
         }
+        let stream_camera = settings::STREAM_CAMERA.on();
+        camera_wanted(stream_camera);
         Self {
             view: View::default(),
             commands,
@@ -134,6 +174,9 @@ impl Application for Tray {
             _runtime: runtime,
             start_on_logon,
             software_decoding: settings::FORCE_SOFTWARE_DECODING.on(),
+            stream_camera,
+            camera: None,
+            camera_tried: false,
             busy: busy::Busy::new(),
         }
     }
@@ -145,6 +188,7 @@ impl Application for Tray {
                 // the attempt failed. Until then, the cursor says Koala is at it.
                 let opening = !self.view.qr.shown() && view.qr.shown();
                 self.busy.set(view.qr == Qr::Preparing);
+                self.follow_connection(&view.status);
                 self.view = view;
                 if opening {
                     context.show_window("qr");
@@ -174,6 +218,18 @@ impl Application for Tray {
                         println!("koala-tray: force software decoding: {e}");
                     }
                     self.software_decoding = settings::FORCE_SOFTWARE_DECODING.on();
+                }
+                // Off, the camera goes now; on, it comes with the next
+                // connection, whose session asks for the iPhone's camera.
+                Some("camera") => {
+                    if let Err(e) = settings::STREAM_CAMERA.set(!self.stream_camera) {
+                        println!("koala-tray: stream camera: {e}");
+                    }
+                    self.stream_camera = settings::STREAM_CAMERA.on();
+                    camera_wanted(self.stream_camera);
+                    if !self.stream_camera {
+                        self.camera = None;
+                    }
                 }
                 _ => {}
             },
@@ -216,6 +272,7 @@ impl Application for Tray {
                     "Options",
                     [
                         MenuItem::item("logon", checked(self.start_on_logon, "Start on logon")),
+                        MenuItem::item("camera", checked(self.stream_camera, "Stream camera")),
                         MenuItem::item("software", checked(self.software_decoding, "Force software decoding")),
                     ],
                 ),
@@ -240,6 +297,28 @@ impl Application for Tray {
                     .on_activate(context.callback(Message::Activate))
                     .menu(menu),
             )
+    }
+}
+
+impl Tray {
+    /// The camera with the connection: made, named after the iPhone, as it
+    /// pairs (once a connection: a camera that can't be made isn't tried at
+    /// every view), and gone when the connection is.
+    fn follow_connection(&mut self, status: &Status) {
+        match status {
+            Status::Connecting(name) | Status::Connected(name) => {
+                if self.stream_camera && !self.camera_tried {
+                    self.camera_tried = true;
+                    self.camera = camera(name);
+                }
+            }
+            _ => {
+                self.camera_tried = false;
+                if self.camera.take().is_some() {
+                    println!("koala-tray: the camera is gone, with the connection");
+                }
+            }
+        }
     }
 }
 

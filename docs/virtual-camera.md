@@ -1,9 +1,11 @@
 # The virtual camera
 
 The iPhone's camera reaches Windows apps as a camera of Windows' own: a Media
-Foundation virtual camera (Windows 11, build 22000 on), "iPhone Camera
-(Koala)" (Parker, 2026-11-21). DirectShow apps see it too, as "iPhone Camera
-(Koala) (Windows Virtual Camera)": Windows adds that.
+Foundation virtual camera (Windows 11, build 22000 on), named after the
+iPhone, "Parker's iPhone", and there while the iPhone is connected, as a Mac
+has it (Parker, 2026-11-21). DirectShow apps see " (Windows Virtual
+Camera)" after the name: Windows adds that. The tray makes it while "Stream
+camera" is on, its default.
 
 ```text
 iPhone ──HEVC over RTP, LLW──▶ Koala (decode.rs: HEVC to NV12)
@@ -34,6 +36,16 @@ iPhone ──HEVC over RTP, LLW──▶ Koala (decode.rs: HEVC to NV12)
 - **The camera** (`crates/koala-vcam`, `VirtualCamera`): made with
   `MFCreateVirtualCamera` for the current user, for as long as Koala runs
   (a session camera). Koala gives it the user's SID as an attribute.
+  - **With the connection:** the tray makes it as an iPhone pairs, before
+    the session's camera stream starts, named after the iPhone (its name is
+    fixed when it's made), and removes it when the connection ends: apps
+    with it open lose it, as they would a webcam unplugged. The console's
+    `--vcam` makes one for the whole run, called "iPhone".
+  - **The name travels only from the iPhone to Koala**, in its pairing
+    information. It stays on this computer, in Windows' list of cameras,
+    where any app may read it. Koala's diagnostics leave names out.
+  - **"Stream camera"**, in the tray's Options: off, there's no camera, and
+    sessions don't ask the iPhone for its camera.
 - **The shared memory** (`crates/koala-vcam/src/frames.rs`): made by the
   source, since only a process in session 0 can make an object in the
   global namespace, and allowed to the system, LocalService and that SID.
