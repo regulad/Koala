@@ -371,8 +371,6 @@ fn tables(
             ("CostFinalize", None, 1000),
             ("MigrateFeatureStates", None, 1200),
             ("InstallValidate", None, 1400),
-            // The old version goes first, whole.
-            ("RemoveExistingProducts", None, 1401),
             ("InstallInitialize", None, 1500),
             ("ProcessComponents", None, 1600),
             ("UnpublishFeatures", None, 1800),
@@ -390,6 +388,17 @@ fn tables(
             ("RegisterProduct", None, 6100),
             ("PublishFeatures", None, 6300),
             ("PublishProduct", None, 6400),
+            // The old version goes after the new is in, not before. A
+            // component both have (FFmpeg's DLLs, unchanged) is costed with
+            // its files in place, so the new version copies none of them;
+            // removed first, the old version deleted them, and the new one
+            // registered the components without their files (2026.11.22's
+            // upgrade over 0.0.0, and the log of 2026.11.22_1's over it).
+            // After, the new version has registered them too, and they stay.
+            // That holds while a component keeps its files across versions,
+            // as the component rules ask (`component_guid`).
+            ("InstallExecute", None, 6500),
+            ("RemoveExistingProducts", None, 6550),
             ("InstallFinalize", None, 6600),
         ],
     ));
@@ -436,19 +445,26 @@ fn tables(
 /// other crate, a date, as `2026.11.22` (Cargo.toml; Parker, 2026-11-22).
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The ProductVersion Windows Installer takes for Koala's version: the year
-/// less 2000, then the month and day, as `26.11.22` for `2026.11.22`, since
-/// a ProductVersion is at most 255.255.65535. Dates keep their order in it,
-/// which upgrades compare, until 2255.
+/// The ProductVersion Windows Installer takes for a version of Koala's: a
+/// date, year.month.day, or a later package of the same day, `_` and its
+/// number, as `2026.11.22_1` (Parker, 2026-11-22, for a test). A
+/// ProductVersion is at most 255.255.65535, so it's the year less 2000, the
+/// month, and the day times 100 plus that number: `26.11.2200` for
+/// `2026.11.22`, `26.11.2201` for `2026.11.22_1`. Upgrades compare them, and
+/// they keep the order: until 2255, and up to `_99`. (2026.11.22, the first
+/// release, recorded `26.11.22`, below them all.)
 fn product_version_of(version: &str) -> Result<String> {
-    let bad = || format!("{version} isn't a date, year.month.day, from 2000");
-    let parts: Vec<u32> =
-        version.split('.').map(str::parse).collect::<std::result::Result<_, _>>().map_err(|_| bad())?;
+    let bad = || format!("{version} isn't a date, year.month.day, from 2000, maybe with _1 to _99");
+    let (date, number) = match version.split_once('_') {
+        Some((date, n)) => (date, n.parse::<u32>().ok().filter(|n| (1..=99).contains(n)).ok_or_else(bad)?),
+        None => (version, 0),
+    };
+    let parts: Vec<u32> = date.split('.').map(str::parse).collect::<std::result::Result<_, _>>().map_err(|_| bad())?;
     let [year, month, day] = parts[..] else { return Err(bad().into()) };
     if !(2000..=2255).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
         return Err(bad().into());
     }
-    Ok(product_version(&format!("{}.{month}.{day}", year - 2000))?.to_string())
+    Ok(product_version(&format!("{}.{month}.{}", year - 2000, day * 100 + number))?.to_string())
 }
 
 fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
@@ -580,7 +596,7 @@ fn winget(root: &Path, msi: &Path, url: &str, out: Option<PathBuf>) -> Result<()
     Ok(())
 }
 
-const USAGE: &str = "usage: koala-msi [--out PATH] [--no-build]\n       \
+const USAGE: &str = "usage: koala-msi [--out PATH] [--no-build] [--version VERSION]\n       \
                      koala-msi winget MSI --installer-url URL [--out DIR]";
 
 fn main() -> Result<()> {
@@ -603,15 +619,18 @@ fn main() -> Result<()> {
         let url = url.ok_or("--installer-url is needed: where winget will download the package from")?;
         return winget(&root, &msi, &url, out);
     }
-    let (mut out, mut no_build) = (None, false);
+    let (mut out, mut no_build, mut version) = (None, false, VERSION.to_string());
     while let Some(a) = args.next() {
         match a.as_str() {
             "--out" => out = Some(PathBuf::from(args.next().ok_or("--out needs a path")?)),
             "--no-build" => no_build = true,
+            // A package of another version than Koala's (Cargo.toml), which
+            // can't carry `_1`: a later one of the same day, as a test's.
+            "--version" => version = args.next().ok_or("--version needs a version")?,
             _ => return Err(format!("unknown argument {a}\n{USAGE}").into()),
         }
     }
-    let version = VERSION;
+    product_version_of(&version)?;
     if !no_build {
         let status = Command::new("cargo")
             .args(["build", "--release", "-p", "koala", "-p", "koala-vcam-source"])
@@ -622,8 +641,10 @@ fn main() -> Result<()> {
         }
     }
     let out = out.unwrap_or_else(|| root.join("target").join("msi").join(format!("Koala-{version}-x64.msi")));
+    // Absolute: Windows Installer's import refuses a relative path (161).
+    let out = std::path::absolute(out)?;
     std::fs::create_dir_all(out.parent().ok_or("no folder for --out")?)?;
-    build(&root, &out, version)
+    build(&root, &out, &version)
 }
 
 #[cfg(test)]
@@ -632,24 +653,39 @@ mod tests {
 
     fn all() -> Vec<Table> {
         let ffmpeg = ["avcodec-63.dll".to_string(), "avutil-61.dll".to_string()];
-        let versions = ("2026.11.22", "26.11.22");
+        let versions = ("2026.11.22", "26.11.2200");
         tables(versions, "{00000000-0000-0000-0000-000000000000}", "14.50", ("{\\rtf1 x}", "{\\rtf1 y}"), &[], &ffmpeg)
     }
 
-    /// A date's ProductVersion: the year less 2000, in the dates' order;
-    /// anything that isn't a date, refused.
+    /// A date's ProductVersion, and a later package's of the same day, in
+    /// their order; anything else, refused.
     #[test]
     fn dates_are_product_versions() {
-        assert_eq!(product_version_of("2026.11.22").unwrap(), "26.11.22");
-        assert_eq!(product_version_of("2027.1.5").unwrap(), "27.1.5");
+        assert_eq!(product_version_of("2026.11.22").unwrap(), "26.11.2200");
+        assert_eq!(product_version_of("2026.11.22_1").unwrap(), "26.11.2201");
+        assert_eq!(product_version_of("2027.1.5").unwrap(), "27.1.500");
         assert!(product_version_of(VERSION).is_ok(), "Koala's own version, {VERSION}, is a date");
-        for bad in ["0.0.0", "2026.13.1", "2026.11.32", "2026.11", "2026.11.22.1", "2256.1.1", "v2026.11.22"] {
+        for bad in [
+            "0.0.0",
+            "2026.13.1",
+            "2026.11.32",
+            "2026.11",
+            "2026.11.22.1",
+            "2256.1.1",
+            "v2026.11.22",
+            "2026.11.22_0",
+            "2026.11.22_100",
+            "2026.11.22_x",
+        ] {
             assert!(product_version_of(bad).is_err(), "{bad}");
         }
-        // Upgrades compare them as numbers, part by part.
+        // Upgrades compare them as numbers, part by part: from the first
+        // release's 26.11.22 on.
         let as_numbers = |v: &str| v.split('.').map(|p| p.parse::<u32>().unwrap()).collect::<Vec<_>>();
-        let order = ["2026.11.22", "2026.12.1", "2027.1.1"].map(|d| as_numbers(&product_version_of(d).unwrap()));
-        assert!(order.is_sorted());
+        let later = ["2026.11.22", "2026.11.22_1", "2026.11.22_2", "2026.11.23", "2026.12.1", "2027.1.1"]
+            .map(|d| as_numbers(&product_version_of(d).unwrap()));
+        let order: Vec<Vec<u32>> = std::iter::once(as_numbers("26.11.22")).chain(later).collect();
+        assert!(order.is_sorted(), "{order:?}");
     }
 
     fn rows<'a>(all: &'a [Table], name: &str) -> &'a [Vec<warlock_msi_kit::Cell>] {
@@ -734,6 +770,22 @@ mod tests {
         for name in ["Koala", "Tray", "Camera", "avcodec_63.dll", "avutil_61.dll"] {
             assert!(components.contains(&name), "no {name}");
         }
+    }
+
+    /// The old version is removed once the new one is in, between
+    /// InstallExecute and InstallFinalize, not before it: removed first, it
+    /// took the files the new one costed as there already.
+    #[test]
+    fn the_old_version_goes_after_the_new_is_in() {
+        let all = all();
+        let execute = rows(&all, "InstallExecuteSequence");
+        let at = |action: &str| -> i32 {
+            let row = execute.iter().find(|r| r[0].as_deref() == Some(action)).unwrap_or_else(|| panic!("no {action}"));
+            row[2].as_deref().unwrap().parse().unwrap()
+        };
+        assert!(at("InstallFiles") < at("InstallExecute"));
+        assert!(at("InstallExecute") < at("RemoveExistingProducts"));
+        assert!(at("RemoveExistingProducts") < at("InstallFinalize"));
     }
 
     #[test]
