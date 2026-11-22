@@ -33,6 +33,33 @@ Koala's package (`koala-msi`) registers the same class, for its copy in
 loads. `tools/vcam.ps1 -Uninstall` removes the class's keys, an installed
 package's too; repairing the package puts them back.
 
+## Before a hardware trial, WSL is off
+
+On WINLITE, a live kernel dump while WSL's virtual machine runs bugchecks
+Windows (0x133, microsoft/WSL#10843; 2026-11-21). Check that
+`wsl --list --running` lists no distribution and that no `vmmemWSL` runs; ask
+Parker before shutting WSL down.
+
+**Why:** a camera stream hung in Stop makes the camera service ask for a
+live kernel dump, and with WSL running that dump stops Windows, as in trial
+30 (`docs/virtual-camera.md`).
+
+After a crash, copy the dump out of `C:\Windows\Minidump` with sudo and read
+it with cdb. Camera_FrameServer event 13 names a hung stream.
+
+## When a trial's scan fails
+
+- **The iPhone never connects:** check `warlockctl peers` (is the iPhone
+  listed? who is master?) and the iPhone's AWDLStateDump (`peers:`, `Rx:`)
+  before touching Koala. A bystander master can split Warlock from the
+  iPhone (crappletv, 2026-11-20).
+- **The QR scan times out though rapportd found `_rdlink`:** if "Skip using
+  NearbyActionV2" names a device other than the Activate target, and no
+  "Bonjour AWDL browser start -- triggered by: Camera" follows, rapportd
+  holds a stale session. Ask Parker to restart the iPhone before debugging
+  (2026-11-20, 2026-11-21; the trigger is unconfirmed). Trials 36 and 37 in
+  `docs/guest-pairing.md` were this.
+
 ## Keep the diagnostics anonymous, and `PRIVACY.md` true
 
 What Koala sends to Sentry (`crates/koala/src/diagnostics.rs`, and the
