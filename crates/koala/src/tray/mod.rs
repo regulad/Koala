@@ -235,6 +235,10 @@ impl Application for Tray {
                     }
                     self.software_decoding = settings::FORCE_SOFTWARE_DECODING.on();
                 }
+                // One of the two streams stays on: a click that would turn
+                // off the last does nothing (Parker, 2026-11-21).
+                Some("microphones") if self.stream_microphones && !self.stream_camera => {}
+                Some("camera") if self.stream_camera && !self.stream_microphones => {}
                 // Taken up by the next session's microphones.
                 Some("microphones") => {
                     if let Err(e) = settings::STREAM_MICROPHONES.set(!self.stream_microphones) {
