@@ -3,11 +3,23 @@
 //! The camera service asks for samples (`RequestSample`, with a token
 //! each), and a thread of the stream's answers them: it waits for Koala's
 //! next picture, or a picture's time (1/30 s) without one, and gives the
-//! oldest request a sample of the latest picture, in one from the service's
-//! allocator, timed with the system clock. So it runs at Koala's rate while
-//! Koala sends, and at 30 a second, black, while Koala doesn't. Its shared
-//! memory ([`koala_vcam::frames`]) is made when the stream starts, and
-//! tried again each second until it can be.
+//! oldest request a sample of the latest picture, timed with the system
+//! clock. So it runs at Koala's rate while Koala sends, and at 30 a second,
+//! black, while Koala doesn't. Its shared memory ([`koala_vcam::frames`]) is
+//! made when the stream starts, and tried again each second until it can be.
+//!
+//! **The samples are its own, in memory, never the service's** (the source
+//! reports `MFSampleAllocatorUsage_UsesCustomAllocator`, as Microsoft's
+//! `HWMediaSource` does for its own). Where an app gives the service a GPU
+//! (the Camera app does), the service's allocator makes Direct3D surfaces,
+//! and writing one takes the service's device lock: from this thread, not
+//! the service's, while the service may be stopping streams and waiting on
+//! that lock itself. Microsoft's `SimpleMediaSource` writes them in
+//! `RequestSample`, on the service's thread; this stream's thread writes
+//! memory, and the service moves the samples to the GPU. That costs a copy
+//! a picture. (Trial 30's crash began with a stream's Stop waiting on a
+//! locked device; the stream was the built-in camera's, and this source had
+//! been given no GPU then: `docs/virtual-camera.md`, "Tried".)
 
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -40,7 +52,7 @@ struct State {
     /// The source, while the stream runs.
     source: Option<IMFMediaSource>,
     running: MF_STREAM_STATE,
-    /// The camera service's allocator, or the stream's own.
+    /// The stream's own allocator, of samples in memory.
     allocator: Option<IMFVideoSampleAllocatorEx>,
     /// The tokens of requests not yet answered, oldest first.
     requests: VecDeque<Option<IUnknown>>,
@@ -125,10 +137,6 @@ impl Stream {
         self.shared.lock().source = source;
     }
 
-    pub fn set_allocator(&self, allocator: IMFVideoSampleAllocatorEx) {
-        self.shared.lock().allocator = Some(allocator);
-    }
-
     /// Starts the stream in `media_type` (its only one), and its thread.
     pub fn start(&self, media_type: &IMFMediaType) -> windows::core::Result<()> {
         {
@@ -137,6 +145,7 @@ impl Stream {
             let allocator = match state.allocator.clone() {
                 Some(allocator) => allocator,
                 None => {
+                    // No device manager given it: its samples are in memory.
                     let mut raw = std::ptr::null_mut();
                     unsafe { MFCreateVideoSampleAllocatorEx(&IMFVideoSampleAllocatorEx::IID, &mut raw)? };
                     // SAFETY: a counted reference to the interface asked for.
@@ -146,6 +155,7 @@ impl Stream {
                 }
             };
             unsafe { allocator.InitializeSampleAllocator(SAMPLES, media_type)? };
+            crate::log("the stream started");
             state.media_type = Some(media_type.clone());
             state.running = MF_STREAM_STATE_RUNNING;
             unsafe { queue.QueueEventParamVar(MEStreamStarted.0 as u32, &GUID::zeroed(), S_OK, &now())? };
@@ -166,6 +176,7 @@ impl Stream {
     /// Stops the stream: its thread, its requests, its allocator's samples.
     pub fn stop(&self) -> windows::core::Result<()> {
         self.end_delivery();
+        crate::log("the stream stopped");
         let mut state = self.shared.lock();
         let was = std::mem::replace(&mut state.running, MF_STREAM_STATE_STOPPED);
         state.requests.clear();
@@ -239,6 +250,7 @@ fn deliver(shared: Shared, sid: Option<String>, stop: Arc<AtomicBool>) {
     frames::black(&mut picture);
     let mut black = true;
     let mut reported = false;
+    let (mut sent, mut failed) = (0u64, 0u64);
     while !stop.load(Ordering::SeqCst) {
         if reader.is_none()
             && let (Some(names), Some(sid)) = (&names, &sid)
@@ -246,7 +258,10 @@ fn deliver(shared: Shared, sid: Option<String>, stop: Arc<AtomicBool>) {
         {
             tried = Some(Instant::now());
             match Reader::create(names, sid) {
-                Ok(made) => reader = Some(made),
+                Ok(made) => {
+                    crate::log("the shared memory is made");
+                    reader = Some(made);
+                }
                 Err(e) if !reported => {
                     reported = true;
                     crate::log(&format!("the shared memory: {e}"));
@@ -277,14 +292,25 @@ fn deliver(shared: Shared, sid: Option<String>, stop: Arc<AtomicBool>) {
                 _ => continue,
             }
         };
-        if let Err(e) = send(&allocator, &queue, &picture, token.as_ref()) {
+        match send(&allocator, &queue, &picture, token.as_ref()) {
+            Ok(()) => {
+                sent += 1;
+                if sent == 1 || sent % 9_000 == 0 {
+                    crate::log(&format!("{sent} samples sent"));
+                }
+            }
             // The allocator's samples all held downstream: this request
             // goes unanswered, as the samples' do.
-            if e.code() != MF_E_SAMPLEALLOCATOR_EMPTY {
-                crate::log(&format!("a sample: {e}"));
+            Err(e) if e.code() == MF_E_SAMPLEALLOCATOR_EMPTY => {}
+            Err(e) => {
+                failed += 1;
+                if failed <= 3 || failed.is_power_of_two() {
+                    crate::log(&format!("a sample ({failed} failed): {e}"));
+                }
             }
         }
     }
+    crate::log(&format!("the delivery ended: {sent} samples sent, {failed} failed"));
 }
 
 /// A sample of `picture`, answering the request `token` was given with.

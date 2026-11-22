@@ -8,8 +8,9 @@
 //! - its attributes, live (not a copy): the camera's, from the activator,
 //!   and a sensor profile collection with the legacy profile, which the
 //!   sample calls mandatory;
-//! - `IKsControl` with no property sets, `IMFGetService` with no services,
-//!   and the camera service's sample allocator used.
+//! - `IKsControl` with no property sets, `IMFGetService` with no services;
+//! - no Direct3D device, and the stream's own allocator, in memory
+//!   ([`crate::stream`] says why).
 
 use std::sync::Mutex;
 
@@ -49,9 +50,7 @@ pub fn create(camera: &IMFAttributes) -> windows::core::Result<IMFMediaSource> {
         attributes.SetUnknown(&MF_DEVICEMFT_SENSORPROFILE_COLLECTION, &profiles)?;
         string(camera, &koala_vcam::USER_SID)
     };
-    if sid.is_none() {
-        crate::log("the camera has no user: it shows black");
-    }
+    crate::log(if sid.is_some() { "a source made" } else { "a source made, with no user: it shows black" });
     let stream = Stream::create(sid)?;
     let descriptor = unsafe { MFCreatePresentationDescriptor(Some(&[Some(stream.descriptor())]))? };
     // Selected from the start, as Microsoft's sample has it: a descriptor's
@@ -204,10 +203,13 @@ impl IMFMediaSourceEx_Impl for Source_Impl {
         Ok(self.stream.attributes())
     }
 
-    /// Unused: the pictures are copied from memory, into whatever samples
-    /// the camera service's allocator gives.
-    fn SetD3DManager(&self, _manager: Ref<IUnknown>) -> windows::core::Result<()> {
-        Ok(())
+    /// Declined, as Microsoft's `SimpleMediaSource` declines it: the stream
+    /// touches no GPU ([`crate::stream`]).
+    fn SetD3DManager(&self, manager: Ref<IUnknown>) -> windows::core::Result<()> {
+        if manager.as_ref().is_some() {
+            crate::log("a Direct3D device offered, and declined");
+        }
+        Err(windows::Win32::Foundation::E_NOTIMPL.into())
     }
 }
 
@@ -222,12 +224,13 @@ impl IMFGetService_Impl for Source_Impl {
     }
 }
 
+/// The stream's samples are its own, in memory ([`crate::stream`]): the
+/// camera service's allocator is taken and not used.
 impl IMFSampleAllocatorControl_Impl for Source_Impl {
-    fn SetDefaultAllocator(&self, stream: u32, allocator: Ref<IUnknown>) -> windows::core::Result<()> {
+    fn SetDefaultAllocator(&self, stream: u32, _allocator: Ref<IUnknown>) -> windows::core::Result<()> {
         if stream != STREAM_ID {
             return Err(E_INVALIDARG.into());
         }
-        self.stream.set_allocator(allocator.ok()?.cast()?);
         Ok(())
     }
 
@@ -245,7 +248,7 @@ impl IMFSampleAllocatorControl_Impl for Source_Impl {
         }
         unsafe {
             *input = stream;
-            *usage = MFSampleAllocatorUsage_UsesProvidedAllocator;
+            *usage = MFSampleAllocatorUsage_UsesCustomAllocator;
         }
         Ok(())
     }

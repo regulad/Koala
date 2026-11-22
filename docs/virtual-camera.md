@@ -40,7 +40,11 @@ iPhone ──HEVC over RTP, LLW──▶ Koala (decode.rs: HEVC to NV12)
 - **The media source** (`crates/koala-vcam-source`): a COM DLL the camera
   service loads. One stream, NV12 1920×1080 at 30 a second, BT.709 in
   limited range. It answers the service's requests with the latest picture,
-  and with black once Koala has sent none for 2 s.
+  and with black once Koala has sent none for 2 s, in samples of its own in
+  memory: it touches no GPU. It logs what it does to `koala-vcam.log` in the
+  service's temporary directory
+  (`C:\Windows\ServiceProfiles\LocalService\AppData\Local\Temp`, which takes
+  Administrator rights to read).
 
 ## Installing it
 
@@ -67,6 +71,33 @@ The DLL loads only what Windows has: the Visual C++ runtime is linked in
   DirectShow input took 149 pictures in 5 s, 1920×1080, of what the iPhone
   had recorded. Windows offered it to DirectShow as YUY2, converting.
 - **Koala killed:** the camera went with it.
+- **Trial 31, live (`koala guest --vcam`):** the iPhone's session through the
+  camera. 1,678 pictures decoded on the GPU and fed to it, and FFmpeg's
+  DirectShow grab took them, a dim room, for the session's length.
+- **The Camera app** opens it, given a GPU device, which the source declines
+  (`crates/koala-vcam-source/src/stream.rs` says why). It can't while
+  another app controls the camera (here, FFmpeg's DirectShow input, which the
+  camera service makes its `MASTER`): it asks a few times in a second, then
+  moves to another camera. Any camera does that; the USB webcam did, held by
+  FFmpeg the same way.
+- **Trial 30 crashed Windows** (bugcheck 0x133, `DPC_WATCHDOG_VIOLATION`).
+  Neither Koala's nor Warlock's, from its dump and the camera service's
+  events:
+  1. FFmpeg held this camera, and opening the Camera app, which couldn't
+     have it, cycled through the others;
+  2. the built-in camera's stream (`DISPLAY\AMDISP_01`, on the AMD GPU's
+     image processor) hung in Stop on a locked device
+     (`MF_E_DXGI_VIDEO_DEVICE_LOCKED`), until the camera service's watchdog
+     asked for a live kernel dump, 20 s later;
+  3. the dump's gathering of the processors (`nt!IopLiveDumpCorralDpc`)
+     waited 20 s on one running WSL's virtual machine
+     (`winhvr!WinHvpVpDispatchLoop` in `vmmemWSL`), and the DPC watchdog
+     stopped Windows. The same stack, with WSL: microsoft/WSL#10843.
+
+  The AWDL link's collapse in that trial (96% of the video lost, from
+  10 Mbit/s with none) followed the freeze; it wasn't its cause. Trials since
+  have run with WSL off: a live dump then completes, and is kept in
+  `C:\Windows\LiveKernelReports`, naming what asked for it.
 
 ## Prior art
 
@@ -91,8 +122,8 @@ For the shared memory: [DeskCam](https://github.com/sinnafuls/rust-virtual-cam)
   `DO_NOT_TRACK` would come in the camera's attributes, as the SID does.
 - **Formats:** NV12 alone so far. Apps that want others (YUY2, RGB32 for
   some DirectShow ones) are untried; Windows converted to YUY2 for FFmpeg.
-- **Apps:** Windows' Camera, browsers, Teams and the like are untried. Teams
-  showed another virtual camera's preview but sent nothing (VCamSample's
-  notes).
+- **Apps:** Windows' Camera works, and FFmpeg's DirectShow input; browsers,
+  Teams and the like are untried. Teams showed another virtual camera's
+  preview but sent nothing (VCamSample's notes).
 - **Lost packets:** the iPhone sends one keyframe a session, so a picture
   lost spoils those after it until the end. An RTCP PLI or FIR is untried.

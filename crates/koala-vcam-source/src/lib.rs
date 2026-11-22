@@ -66,11 +66,33 @@ impl Drop for Counted {
     }
 }
 
-/// A line for a debugger (the camera service has no console): DebugView,
-/// or Microsoft's `Debug-FrameServer` scripts.
+/// A line for a debugger (the camera service has no console: DebugView, or
+/// Microsoft's `Debug-FrameServer` scripts), and for `koala-vcam.log` in the
+/// process's temporary directory: the camera service's, LocalService's, is
+/// `C:\Windows\ServiceProfiles\LocalService\AppData\Local\Temp`. The file
+/// is kept under 1 MB, its predecessor beside it as `koala-vcam.log.old`.
+/// It holds what the source did, not what it was given: no names, pictures
+/// or SIDs.
 pub(crate) fn log(message: &str) {
     let line = HSTRING::from(format!("koala-vcam: {message}\n"));
     unsafe { OutputDebugStringW(PCWSTR(line.as_ptr())) };
+    let time = unsafe { windows::Win32::System::SystemInformation::GetLocalTime() };
+    let path = std::env::temp_dir().join("koala-vcam.log");
+    if std::fs::metadata(&path).is_ok_and(|m| m.len() > 1 << 20) {
+        let _ = std::fs::rename(&path, path.with_extension("log.old"));
+    }
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        use std::io::Write;
+        let _ = writeln!(
+            file,
+            "{:02}:{:02}:{:02}.{:03} [{}] {message}",
+            time.wHour,
+            time.wMinute,
+            time.wSecond,
+            time.wMilliseconds,
+            std::process::id()
+        );
+    }
 }
 
 #[unsafe(no_mangle)]
