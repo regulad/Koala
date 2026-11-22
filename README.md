@@ -1,6 +1,24 @@
 # Koala
 
-An iPhone as a microphone for Windows, with no app on the iPhone.
+<img height="270" alt="Screenshot 2026-11-21 204316" src="https://github.com/user-attachments/assets/8b16b101-d77a-4533-b1b7-54468f1500e2" />
+<img height="600" alt="Screenshot 2026-11-21 204255" src="https://github.com/user-attachments/assets/4f4f5a5b-ea0c-4ab4-8b84-ece6a3a13708" />
+<img height="600" alt="IMG_0445" src="https://github.com/user-attachments/assets/48dca47c-fb26-4f67-9f34-038eb152d096" />
+<img height="500" alt="Screenshot 2026-11-21 210945" src="https://github.com/user-attachments/assets/ae8caafb-0305-4100-b2e2-099bf5714d68" />
+
+<br>
+
+A full open-source implementation of Apple's closed-source Wombat feature, 
+better known as Continuity Camera. Koala's latency is on-par with Wombat.
+
+Koala provides a standard Microphone and Camera device that other Windows
+applications can use. Koala can be ported to other platforms; care has 
+been taken to limit the amount of code that ties it to Windows in the core.
+
+Koala works with Warlock to connect to your iPhone the same way a Mac 
+or Apple TV would. It doesn't need to contact Apple to provision an 
+identity, and all communication is encrypted over-the-air.
+
+## About
 
 Apple TVs let a guest's iPhone act as their microphone: the TV shows a QR
 code, the iPhone scans it, pairs, and sends its microphone's audio. Koala
@@ -27,9 +45,6 @@ Koala's releases send crash reports and diagnostics to Sentry, without
 anything that identifies you, this computer or the iPhone:
 [`PRIVACY.md`](PRIVACY.md) says what. Set `DO_NOT_TRACK=1` and it sends
 nothing.
-
-**Status: research.** Nothing works yet. [`PLAN.md`](PLAN.md) has the design
-and where each part stands.
 
 ## Build
 
