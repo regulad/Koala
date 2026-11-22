@@ -62,6 +62,15 @@ pub mod command {
     pub const SYNCHRONIZE_AUDIO_CLOCK_COMPLETE: u64 = 5;
 }
 
+/// The iPhone's events (Command, `POST_EVENT`, `[name, entity]`) that end
+/// its session: its user's Disconnect, sent for every entity it has, and its
+/// own when a stream fails, as a media stream does 12 s without RTCP
+/// (`docs/guest-pairing.md`, trials 17 and 27).
+pub mod event {
+    pub const USER_DISCONNECT: &str = "kCMContinuityCaptureEventUserDisconnect";
+    pub const CONNECTION_DISCONNECT: &str = "kCMContinuityCaptureEventConnectionDisconnect";
+}
+
 /// Selectors on the Control stream.
 pub mod control {
     pub const SET_VALUE: u64 = 1;

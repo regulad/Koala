@@ -15,8 +15,8 @@ use apple_opack::Value;
 use koala_capture::avc::{AnswerSettings, Offer, answer, ntp_now};
 use koala_capture::rtcp::{self, ReceiverStats};
 use koala_capture::session::{
-    ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, StreamFormat, control, message,
-    session_start, start_stream, stream as name, stream_activated, stream_announce, streams,
+    ARGS, Configuration, MESSAGE_TYPE, SELECTOR, SESSION_EVENT, STREAM_EVENT, StreamFormat, command, control, event,
+    message, session_start, start_stream, stream as name, stream_activated, stream_announce, streams,
 };
 use koala_capture::srtp::{self, Rollover};
 use koala_capture::streams::{
@@ -29,7 +29,7 @@ use koala_rapport::cipher::{Cipher, Role};
 use koala_rapport::message::dict;
 use koala_rapport::{Connection, FrameType, Message, MessageType};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
-use tokio::sync::oneshot;
+use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinSet;
 
 use crate::camera::{self, Recording};
@@ -151,8 +151,11 @@ pub async fn run(
             (c.entity, u32::from_be_bytes(ssrc))
         })
         .collect();
+    let (ending, ended) = mpsc::unbounded_channel();
     let mut session = Session {
         connection,
+        ending,
+        ended,
         local,
         ssrcs,
         model: Model::default(),
@@ -197,6 +200,11 @@ fn uuid_v4() -> [u8; 16] {
 
 struct Session {
     connection: Connection<TcpStream>,
+    /// The Command stream's word that the iPhone ended the session: it says
+    /// so there, and leaves this connection open (trial 35: still open a
+    /// minute after its user's Disconnect).
+    ending: mpsc::UnboundedSender<&'static str>,
+    ended: mpsc::UnboundedReceiver<&'static str>,
     local: Local,
     /// Koala's SSRC for each entity.
     ssrcs: Ssrcs,
@@ -223,10 +231,19 @@ struct Session {
 
 impl Session {
     /// Follows the session until it ends: how, as a word for the diagnostics
-    /// (`closed`: the iPhone ended it; `error`: Koala couldn't go on).
+    /// (`closed`: the iPhone closed its connection; `user-disconnect` and
+    /// `connection-disconnect`: it ended the session on Command, see
+    /// [`ending`]; `error`: Koala couldn't go on).
     async fn follow(&mut self) -> &'static str {
         loop {
-            let value = match self.connection.receive_opack().await {
+            let received = tokio::select! {
+                received = self.connection.receive_opack() => received,
+                Some(why) = self.ended.recv() => {
+                    println!("capture: the session ended: the iPhone's {why}");
+                    return why;
+                }
+            };
+            let value = match received {
                 Ok((FrameType::E_OPACK, value)) => value,
                 Ok(_) => continue,
                 Err(e) => {
@@ -307,6 +324,7 @@ impl Session {
                             start_rx,
                             self.ssrcs.clone(),
                             self.model.clone(),
+                            self.ending.clone(),
                         ));
                         self.activated(&stream).await?;
                     }
@@ -383,8 +401,8 @@ impl Session {
 /// One Rapport stream: the iPhone's connection, encrypted from its first
 /// frame with the stream's pre-shared key. Logs what it carries, answers
 /// requests empty and (on Control) the AVC offer, keeping the iPhone's model
-/// from it, and sends `start` (the Command stream's StartStream) when it's
-/// given.
+/// from it, sends `start` (the Command stream's StartStream) when it's
+/// given, and tells `ending` when the iPhone ends the session (on Command).
 async fn rapport_stream(
     stream: String,
     tcp: TcpStream,
@@ -392,6 +410,7 @@ async fn rapport_stream(
     start: oneshot::Receiver<Vec<Value>>,
     ssrcs: Ssrcs,
     model: Model,
+    ending: mpsc::UnboundedSender<&'static str>,
 ) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
@@ -420,11 +439,36 @@ async fn rapport_stream(
                 xid += 1;
                 Message::event(STREAM_EVENT, xid, content)
             }
+            MessageType::Event if stream == name::COMMAND && message.id.as_deref() == Some(STREAM_EVENT) => {
+                if let Some(why) = ending_event(&message.content) {
+                    let _ = ending.send(why);
+                }
+                continue;
+            }
             _ => continue,
         };
         if let Err(e) = connection.send_opack(FrameType::E_OPACK, &out).await {
             return println!("capture: stream {stream}: {e}");
         }
+    }
+}
+
+/// How the iPhone ended its session, as a word for the diagnostics, if a
+/// Command event (selector 3, `[name, entity]`) says it did: its user's
+/// Disconnect, or its own on a stream's failure. Either ends it for every
+/// entity: the Disconnect comes for each it has, Desk View's (2) included,
+/// within 70 ms (trial 35), and a failure of one stream ended trial 27. In
+/// trial 38 the first Disconnect ended the session, and with it the camera
+/// and the microphones.
+fn ending_event(content: &Value) -> Option<&'static str> {
+    if content.get(SELECTOR).and_then(Value::as_u64) != Some(command::POST_EVENT) {
+        return None;
+    }
+    let Some(Value::Array(args)) = content.get(ARGS) else { return None };
+    match args.first().and_then(Value::as_str)? {
+        event::USER_DISCONNECT => Some("user-disconnect"),
+        event::CONNECTION_DISCONNECT => Some("connection-disconnect"),
+        _ => None,
     }
 }
 
@@ -660,5 +704,30 @@ async fn udp_stream(
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn on_command(selector: u64, args: Vec<Value>) -> Value {
+        dict(vec![(SELECTOR, Value::int(selector)), (ARGS, Value::Array(args))])
+    }
+
+    fn post_event(name: &str, entity: u64) -> Value {
+        on_command(command::POST_EVENT, vec![Value::String(name.into()), Value::int(entity)])
+    }
+
+    #[test]
+    fn the_iphone_ends_its_session_on_command() {
+        assert_eq!(ending_event(&post_event(event::USER_DISCONNECT, 2)), Some("user-disconnect"));
+        assert_eq!(ending_event(&post_event(event::CONNECTION_DISCONNECT, 1)), Some("connection-disconnect"));
+        // What it sends as a session starts doesn't end it (trial 35).
+        assert_eq!(ending_event(&post_event("kCMContinuityCaptureEventUserResume", 1)), None);
+        assert_eq!(ending_event(&post_event("kCMContinuityCaptureEventActiveCallEnd", 3)), None);
+        // Nor does its clock, every 60 ms.
+        let clock = vec![Value::int(2880u64), Value::int(88082856506583u64), Value::int(8184875545173426190u64)];
+        assert_eq!(ending_event(&on_command(command::SYNCHRONIZE_AUDIO_CLOCK, clock)), None);
     }
 }
