@@ -52,5 +52,10 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # Warlock's client crate comes from its repository; windows-reactor, a
-# preview, from windows-rs's (Cargo.toml).
-allow-git = ["https://github.com/regulad/Warlock", "https://github.com/microsoft/windows-rs"]
+# preview, from windows-rs's; usbip-audio, which isn't published, from its
+# own (Cargo.toml).
+allow-git = [
+    "https://github.com/regulad/Warlock",
+    "https://github.com/microsoft/windows-rs",
+    "https://github.com/network-audio/usbip-audio",
+]

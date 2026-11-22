@@ -57,6 +57,10 @@ sha1 = "0.11.0"
 sha2 = "0.11.1"
 srp = "0.7.0-rc.3"
 thiserror = "2.0.21"
+# The microphones' USB devices, served over USB/IP to usbip-win2 (PLAN.md,
+# "Audio out"): network-audio's (MIT), which isn't on crates.io, at its
+# commit of 2026-11-07.
+usbip-audio = { git = "https://github.com/network-audio/usbip-audio", rev = "58032ab0664ffec1d0c178f40a3a69359c21f597", version = "0.1.0" }
 tokio = "1.54.1"
 windows = "0.62.2"
 # windows' COM support, for implementing interfaces (koala-vcam).

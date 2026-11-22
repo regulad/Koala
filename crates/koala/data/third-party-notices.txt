@@ -952,6 +952,11 @@ url 2.5.8
   Source: https://github.com/servo/rust-url
   Files: [13] LICENSE-APACHE, [71] LICENSE-MIT
 
+usbip-audio 0.1.0
+  Licence: MIT
+  Source: https://github.com/network-audio/usbip-audio
+  Files: [138] LICENSE
+
 utf8-zero 0.8.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/algesten/utf8-zero
@@ -960,22 +965,22 @@ utf8-zero 0.8.1
 utf8_iter 1.1.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/hsivonen/utf8_iter
-  Files: [138] COPYRIGHT, [24] LICENSE-APACHE, [43] LICENSE-MIT
+  Files: [139] COPYRIGHT, [24] LICENSE-APACHE, [43] LICENSE-MIT
 
 utf_types 1.0.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/hsivonen/utf_types
-  Files: [139] COPYRIGHT, [24] LICENSE-APACHE, [43] LICENSE-MIT
+  Files: [140] COPYRIGHT, [24] LICENSE-APACHE, [43] LICENSE-MIT
 
 uuid 1.29.0
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/uuid-rs/uuid
-  Files: [13] LICENSE-APACHE, [140] LICENSE-MIT
+  Files: [13] LICENSE-APACHE, [141] LICENSE-MIT
 
 want 0.3.2
   Licence: MIT
   Source: https://github.com/seanmonstar/want
-  Files: [141] LICENSE
+  Files: [142] LICENSE
 
 warlock-client 0.2.5
   Licence: GPL-2.0-only OR AGPL-3.0-or-later
@@ -984,127 +989,142 @@ warlock-client 0.2.5
 webpki-root-certs 1.0.11
   Licence: CDLA-Permissive-2.0
   Source: https://github.com/rustls/webpki-roots
-  Files: [142] LICENSE
+  Files: [143] LICENSE
 
 winapi 0.3.9
   Licence: MIT/Apache-2.0
   Source: https://github.com/retep998/winapi-rs
-  Files: [56] LICENSE-APACHE, [143] LICENSE-MIT
+  Files: [56] LICENSE-APACHE, [144] LICENSE-MIT
 
 windows 0.62.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-collections 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-collections 0.3.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-core 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-core 0.62.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-future 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-future 0.3.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-implement 0.60.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-interface 0.59.3
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-link 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-link 0.2.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-numerics 0.3.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-reactor 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-reference 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-result 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-result 0.4.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-strings 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-strings 0.5.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
+
+windows-sys 0.59.0
+  Licence: MIT OR Apache-2.0
+  Source: https://github.com/microsoft/windows-rs
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-sys 0.61.2
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
+
+windows-targets 0.52.6
+  Licence: MIT OR Apache-2.0
+  Source: https://github.com/microsoft/windows-rs
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-threading 0.100.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-threading 0.2.1
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-time 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
 
 windows-window 0.101.0
   Licence: MIT OR Apache-2.0
   Source: https://github.com/microsoft/windows-rs
-  Files: [144] license-apache-2.0, [145] license-mit
+  Files: [145] license-apache-2.0, [146] license-mit
+
+windows_x86_64_msvc 0.52.6
+  Licence: MIT OR Apache-2.0
+  Source: https://github.com/microsoft/windows-rs
+  Files: [145] license-apache-2.0, [146] license-mit
 
 writeable 0.6.4
   Licence: Unicode-3.0
@@ -1114,7 +1134,7 @@ writeable 0.6.4
 x25519-dalek 3.0.0
   Licence: BSD-3-Clause
   Source: https://github.com/dalek-cryptography/curve25519-dalek/tree/main/x25519-dalek
-  Files: [146] LICENSE
+  Files: [147] LICENSE
 
 yoke 0.8.4
   Licence: Unicode-3.0
@@ -1139,7 +1159,7 @@ zerofrom-derive 0.1.8
 zeroize 1.9.1
   Licence: Apache-2.0 OR MIT
   Source: https://github.com/RustCrypto/utils
-  Files: [24] LICENSE-APACHE, [147] LICENSE-MIT
+  Files: [24] LICENSE-APACHE, [148] LICENSE-MIT
 
 zerotrie 0.2.5
   Licence: Unicode-3.0
@@ -1164,7 +1184,7 @@ zmij 1.0.23
 FFmpeg ffmpeg-n9.0.2-39-g7adfbe40dc-win64-lgpl-shared-9.0
   Licence: LGPL-3.0-or-later
   Source: https://ffmpeg.org (this build: https://github.com/BtbN/FFmpeg-Builds)
-  Files: [148] third_party/ffmpeg/LICENSE.txt
+  Files: [149] third_party/ffmpeg/LICENSE.txt
 
 
 Licence texts
@@ -8451,6 +8471,31 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 
 [138]
 
+MIT License
+
+Copyright (c) 2026 Stephen von Takach
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+[139]
+
 Copyright Mozilla Foundation
 
 Licensed under the Apache License (Version 2.0), or the MIT license,
@@ -8495,7 +8540,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 
 
-[139]
+[140]
 
 Copyright Mozilla Foundation
 
@@ -8519,7 +8564,7 @@ Test code is dedicated to the Public Domain when so designated (see
 the individual files for PD/CC0-dedicated sections).
 
 
-[140]
+[141]
 
 Copyright (c) 2014 The Rust Project Developers
 Copyright (c) 2018 Ashley Mannix, Christopher Armstrong, Dylan DPC, Hunar Roop Kahlon
@@ -8549,7 +8594,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[141]
+[142]
 
 Copyright (c) 2018-2019 Sean McArthur
 
@@ -8572,7 +8617,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 
-[142]
+[143]
 
 # Community Data License Agreement - Permissive - Version 2.0
 
@@ -8637,7 +8682,7 @@ of Data, including for example machine learning models and models'
 insights.
 
 
-[143]
+[144]
 
 Copyright (c) 2015-2018 The winapi-rs Developers
 
@@ -8660,7 +8705,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 
-[144]
+[145]
 
                                  Apache License
                            Version 2.0, January 2004
@@ -8865,7 +8910,7 @@ SOFTWARE.
    limitations under the License.
 
 
-[145]
+[146]
 
     MIT License
 
@@ -8890,7 +8935,7 @@ SOFTWARE.
     SOFTWARE
 
 
-[146]
+[147]
 
 Copyright (c) 2017-2021 isis agora lovecruft. All rights reserved.
 Copyright (c) 2019-2021 DebugSteven. All rights reserved.
@@ -8923,7 +8968,7 @@ NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[147]
+[148]
 
 Copyright (c) 2018-2026 The RustCrypto Project Developers
 
@@ -8952,7 +8997,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 
 
-[148]
+[149]
 
                    GNU LESSER GENERAL PUBLIC LICENSE
                        Version 3, 29 June 2007
@@ -9121,4 +9166,4 @@ permanent authorization for you to choose that version for the
 Library.
 
 
-Generated by tools/third_party_notices.py from Cargo.lock 2ab12c160e5731d2.
+Generated by tools/third_party_notices.py from Cargo.lock 3394fbf71f90d8c1.
