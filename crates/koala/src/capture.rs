@@ -9,6 +9,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::net::{SocketAddr, SocketAddrV6};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use apple_opack::Value;
@@ -61,6 +63,27 @@ const STREAM_CONNECT: Duration = Duration::from_secs(5);
 /// How often Koala sends RTCP: about as often as the iPhone does (trial 21).
 /// The iPhone ends the session after 12 s without any.
 const RTCP_INTERVAL: Duration = Duration::from_secs(1);
+/// How long a media stream's RTP may stop before its log says so, and says
+/// again when it comes back: what a pause looks like on the wire.
+const QUIET: Duration = Duration::from_secs(2);
+/// How long a media stream may hear nothing at all from the iPhone, RTP or
+/// RTCP, before Koala ends the session: the iPhone's own limit for RTCP
+/// (`docs/guest-pairing.md`, "Both at once"). The backstop for an iPhone
+/// that goes without a word (out of range, its link lost), which leaves the
+/// session's connection open. Not while paused: the camera's stream sends
+/// nothing then, not even RTCP (trial 39).
+const SILENCE: Duration = Duration::from_secs(12);
+/// TCP keepalive on the session's connection, the backstop while paused: an
+/// iPhone gone for this long, and then the probes Windows sends after it (10,
+/// [`KEEPALIVE_INTERVAL`] apart), breaks the connection, and so the session.
+const KEEPALIVE_IDLE: Duration = Duration::from_secs(10);
+const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(2);
+/// How long the SSRC a media stream follows must be quiet before another
+/// that the iPhone sends on it takes its place. A pause renegotiates both
+/// streams, and the microphones' came back under a new SSRC, which a stream
+/// that kept to its first dropped (trial 40: nothing decoded after the
+/// resume). Two at once, which nothing has shown, change nothing.
+const FOLLOW: Duration = Duration::from_secs(1);
 /// The microphone's RTP clock: its timestamps advance 480 per 10 ms packet
 /// (trial 21).
 const MIC_CLOCK_RATE: u32 = 48_000;
@@ -98,6 +121,10 @@ pub async fn run(
         crate::diagnostics::error("capture: no connection to the iPhone's RDLink listener");
         return println!("capture: no connection to port {port}");
     };
+    let keepalive = socket2::TcpKeepalive::new().with_time(KEEPALIVE_IDLE).with_interval(KEEPALIVE_INTERVAL);
+    if let Err(e) = socket2::SockRef::from(&stream).set_tcp_keepalive(&keepalive) {
+        println!("capture: no keepalive on the session's connection: {e}");
+    }
     let mut connection = Connection::new(stream).with_trace(format!("[iPhone port {port}]"));
     let known = |id: &[u8]| (id == peer.id.as_slice()).then_some(peer.public_key);
     let expected = Some((peer.id.clone(), peer.public_key));
@@ -151,11 +178,12 @@ pub async fn run(
             (c.entity, u32::from_be_bytes(ssrc))
         })
         .collect();
-    let (ending, ended) = mpsc::unbounded_channel();
+    let (tell, told) = mpsc::unbounded_channel();
     let mut session = Session {
         connection,
-        ending,
-        ended,
+        tell,
+        told,
+        paused: Arc::new(AtomicBool::new(false)),
         local,
         ssrcs,
         model: Model::default(),
@@ -200,11 +228,15 @@ fn uuid_v4() -> [u8; 16] {
 
 struct Session {
     connection: Connection<TcpStream>,
-    /// The Command stream's word that the iPhone ended the session: it says
-    /// so there, and leaves this connection open (trial 35: still open a
-    /// minute after its user's Disconnect).
-    ending: mpsc::UnboundedSender<&'static str>,
-    ended: mpsc::UnboundedReceiver<&'static str>,
+    /// What the streams hear of the iPhone ([`Said`]): that it ended the
+    /// session, which it says on Command and not by closing this connection
+    /// (trial 35: still open a minute after its user's Disconnect), or went
+    /// silent; and its user's pauses.
+    tell: mpsc::UnboundedSender<Said>,
+    told: mpsc::UnboundedReceiver<Said>,
+    /// Whether the iPhone's user has it paused: its media streams don't
+    /// count its silence then.
+    paused: Arc<AtomicBool>,
     local: Local,
     /// Koala's SSRC for each entity.
     ssrcs: Ssrcs,
@@ -233,15 +265,25 @@ impl Session {
     /// Follows the session until it ends: how, as a word for the diagnostics
     /// (`closed`: the iPhone closed its connection; `user-disconnect` and
     /// `connection-disconnect`: it ended the session on Command, see
-    /// [`ending`]; `error`: Koala couldn't go on).
+    /// [`said`]; `silence`: a media stream heard nothing from it for
+    /// [`SILENCE`]; `error`: Koala couldn't go on).
     async fn follow(&mut self) -> &'static str {
         loop {
             let received = tokio::select! {
                 received = self.connection.receive_opack() => received,
-                Some(why) = self.ended.recv() => {
-                    println!("capture: the session ended: the iPhone's {why}");
-                    return why;
-                }
+                Some(said) = self.told.recv() => match said {
+                    Said::Ended(why) => {
+                        println!("capture: the session ended: the iPhone's {why}");
+                        return why;
+                    }
+                    Said::Paused(paused) => {
+                        if self.paused.swap(paused, Ordering::Relaxed) != paused {
+                            println!("capture: the iPhone's user {} it", if paused { "paused" } else { "resumed" });
+                        }
+                        self.report.send(Event::Paused(paused));
+                        continue;
+                    }
+                },
             };
             let value = match received {
                 Ok((FrameType::E_OPACK, value)) => value,
@@ -324,7 +366,7 @@ impl Session {
                             start_rx,
                             self.ssrcs.clone(),
                             self.model.clone(),
-                            self.ending.clone(),
+                            self.tell.clone(),
                         ));
                         self.activated(&stream).await?;
                     }
@@ -352,9 +394,9 @@ impl Session {
                 let ssrc = self.ssrcs[&configuration.entity];
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
-                let (model, report) = (self.model.clone(), self.report.clone());
-                let iphone = self.iphone_name.clone();
-                self.streams.spawn(udp_stream(stream.clone(), socket, keys, ssrc, (model, iphone), report, stop_rx));
+                let (model, iphone) = (self.model.clone(), self.iphone_name.clone());
+                let to = (self.report.clone(), self.tell.clone(), self.paused.clone());
+                self.streams.spawn(udp_stream(stream.clone(), socket, keys, ssrc, (model, iphone), to, stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -402,7 +444,7 @@ impl Session {
 /// frame with the stream's pre-shared key. Logs what it carries, answers
 /// requests empty and (on Control) the AVC offer, keeping the iPhone's model
 /// from it, sends `start` (the Command stream's StartStream) when it's
-/// given, and tells `ending` when the iPhone ends the session (on Command).
+/// given, and tells the session what the iPhone says on Command ([`said`]).
 async fn rapport_stream(
     stream: String,
     tcp: TcpStream,
@@ -410,7 +452,7 @@ async fn rapport_stream(
     start: oneshot::Receiver<Vec<Value>>,
     ssrcs: Ssrcs,
     model: Model,
-    ending: mpsc::UnboundedSender<&'static str>,
+    tell: mpsc::UnboundedSender<Said>,
 ) {
     let mut connection = Connection::new(tcp).with_trace(format!("[{stream}]"));
     connection.encrypt(Cipher::new(&psk, Role::Server));
@@ -441,8 +483,8 @@ async fn rapport_stream(
                 Message::event(STREAM_EVENT, xid, content)
             }
             MessageType::Event if stream == name::COMMAND && message.id.as_deref() == Some(STREAM_EVENT) => {
-                if let Some(why) = ending_event(&message.content) {
-                    let _ = ending.send(why);
+                if let Some(said) = said(&message.content) {
+                    let _ = tell.send(said);
                 }
                 // The microphones' clock (selector 4, every 60 ms), which the
                 // iPhone sends until the host answers that it has it
@@ -475,21 +517,34 @@ async fn rapport_stream(
     }
 }
 
-/// How the iPhone ended its session, as a word for the diagnostics, if a
-/// Command event (selector 3, `[name, entity]`) says it did: its user's
-/// Disconnect, or its own on a stream's failure. Either ends it for every
-/// entity: the Disconnect comes for each it has, Desk View's (2) included,
-/// within 70 ms (trial 35), and a failure of one stream ended trial 27. In
-/// trial 38 the first Disconnect ended the session, and with it the camera
-/// and the microphones.
-fn ending_event(content: &Value) -> Option<&'static str> {
+/// What a session's streams hear of the iPhone, for the session.
+#[derive(Debug, PartialEq)]
+enum Said {
+    /// It ended the session: how, as a word for the diagnostics.
+    Ended(&'static str),
+    /// Its user paused it (`true`), or resumed it.
+    Paused(bool),
+}
+
+/// What a Command event (selector 3, `[name, entity]`) says, if anything
+/// the session acts on. Each comes for every entity the iPhone has, Desk
+/// View's (2) included, within 70 ms (trial 35).
+/// - Its user's Disconnect, or its own on a stream's failure, ends the
+///   session for every entity: a failure of one stream ended trial 27, and
+///   in trial 38 the first Disconnect ended the session, and with it the
+///   camera and the microphones.
+/// - Its user's Pause and Resume, for the tray. A Resume also comes as every
+///   session starts.
+fn said(content: &Value) -> Option<Said> {
     if content.get(SELECTOR).and_then(Value::as_u64) != Some(command::POST_EVENT) {
         return None;
     }
     let Some(Value::Array(args)) = content.get(ARGS) else { return None };
     match args.first().and_then(Value::as_str)? {
-        event::USER_DISCONNECT => Some("user-disconnect"),
-        event::CONNECTION_DISCONNECT => Some("connection-disconnect"),
+        event::USER_DISCONNECT => Some(Said::Ended("user-disconnect")),
+        event::CONNECTION_DISCONNECT => Some(Said::Ended("connection-disconnect")),
+        event::USER_PAUSE => Some(Said::Paused(true)),
+        event::USER_RESUME => Some(Said::Paused(false)),
         _ => None,
     }
 }
@@ -582,6 +637,13 @@ impl Media {
         }
     }
 
+    /// The stream now follows a new SSRC ([`FOLLOW`]).
+    fn new_source(&mut self) {
+        if let Self::Microphone(mic) = self {
+            mic.new_source();
+        }
+    }
+
     /// One decrypted RTP packet. True for the first that makes media.
     fn packet(&mut self, seq: u16, clear: &[u8]) -> bool {
         match self {
@@ -612,7 +674,8 @@ impl Media {
 /// keeps receiver statistics on it, reads its SRTCP sender reports, and
 /// answers once a second with an SRTCP receiver report, without which the
 /// iPhone ends the session at 12 s. RTP and RTCP share the port, both ways.
-/// The first media is reported as [`Event::Streaming`].
+/// The first media is reported as [`Event::Streaming`], and the session
+/// told if the iPhone falls silent ([`SILENCE`]) while not `paused`.
 /// The reports leave from this socket, bound to Warlock's link-local
 /// address: left to choose, Windows sent to the iPhone's `llw0` address
 /// from another adapter's ULA (trial 21).
@@ -622,14 +685,17 @@ async fn udp_stream(
     keys: srtp::Context,
     ssrc: u32,
     (model, iphone): (Model, String),
-    report: Report,
+    (report, tell, paused): (Report, mpsc::UnboundedSender<Said>, Arc<AtomicBool>),
     mut stop: oneshot::Receiver<()>,
 ) {
+    let mut heard = Heard::default();
     let mut buffer = vec![0u8; 2048];
     let (mut packets, mut refused, mut reports_in) = (0u64, 0u64, 0u64);
     let mut reports_out = 0u32;
     let mut peer: Option<SocketAddr> = None;
     let mut stats: Option<ReceiverStats> = None;
+    // When the SSRC the statistics follow was last heard.
+    let mut followed_at: Option<Instant> = None;
     // Each SSRC's sequence numbers roll over on their own.
     let mut rollovers: BTreeMap<u32, Rollover> = BTreeMap::new();
     let mut media = Media::for_stream(&stream, model, &iphone);
@@ -652,6 +718,7 @@ async fn udp_stream(
                     match keys.unprotect_rtcp(data) {
                         Ok((rtcp, index)) => {
                             reports_in += 1;
+                            heard.report(Instant::now());
                             for (sender, ntp) in rtcp::sender_reports(&rtcp) {
                                 if let Some(s) = stats.as_mut().filter(|s| s.ssrc == sender) {
                                     s.sender_report(ntp, Instant::now());
@@ -677,13 +744,27 @@ async fn udp_stream(
                 match keys.unprotect_rtp(data, roc) {
                     Ok(clear) => {
                         rollover.update(seq, roc);
-                        let clock_rate = media.clock_rate();
+                        if let Some(gap) = heard.media(Instant::now()) {
+                            println!("capture: stream {stream}: media again, after {:.1} s", gap.as_secs_f32());
+                        }
+                        let (clock_rate, now) = (media.clock_rate(), Instant::now());
                         let s = stats.get_or_insert_with(|| ReceiverStats::new(source, clock_rate, seq));
+                        if s.ssrc != source && followed_at.is_some_and(|t| now - t >= FOLLOW) {
+                            println!(
+                                "capture: stream {stream}: following the iPhone's new SSRC {source:#010x}, its {:#010x} \
+                                 quiet for {:.1} s",
+                                s.ssrc,
+                                followed_at.map_or(0.0, |t| (now - t).as_secs_f32())
+                            );
+                            *s = ReceiverStats::new(source, clock_rate, seq);
+                            media.new_source();
+                        }
                         if s.ssrc == source {
-                            s.received(seq, timestamp, Instant::now());
+                            s.received(seq, timestamp, now);
+                            followed_at = Some(now);
                         }
                         // The camera's every packet is kept, whatever its
-                        // SSRC; the microphone's from the first SSRC only.
+                        // SSRC; the microphone's from the SSRC it follows.
                         let first = match &media {
                             Media::Camera(_) => true,
                             Media::Microphone(_) => s.ssrc == source,
@@ -709,6 +790,18 @@ async fn udp_stream(
                 }
             }
             _ = tick.tick() => {
+                match heard.tick(Instant::now(), paused.load(Ordering::Relaxed)) {
+                    Some(Change::Quiet) => println!(
+                        "capture: stream {stream}: no media for {} s; its last report {}",
+                        QUIET.as_secs(),
+                        heard.last_report(Instant::now())
+                    ),
+                    Some(Change::Silent) => {
+                        println!("capture: stream {stream}: nothing from the iPhone for {} s", SILENCE.as_secs());
+                        let _ = tell.send(Said::Ended("silence"));
+                    }
+                    None => {}
+                }
                 let (Some(to), Some(s)) = (peer, stats.as_mut()) else { continue };
                 reports_out += 1;
                 let report = rtcp::receiver_report(ssrc, &[s.report_block(Instant::now())]);
@@ -729,9 +822,113 @@ async fn udp_stream(
     }
 }
 
+/// What a media stream has heard from the iPhone, and when: its media (RTP)
+/// and anything at all (RTP or RTCP).
+#[derive(Default)]
+struct Heard {
+    media: Option<Instant>,
+    any: Option<Instant>,
+    /// Its media has stopped for [`QUIET`], and the log has said so.
+    quiet: bool,
+    /// It has heard nothing for [`SILENCE`], and the session has been told.
+    silent: bool,
+}
+
+/// What [`Heard::tick`] finds.
+#[derive(Debug, PartialEq)]
+enum Change {
+    /// The media has stopped, for [`QUIET`].
+    Quiet,
+    /// Nothing at all, for [`SILENCE`]: once, and the stream is done.
+    Silent,
+}
+
+impl Heard {
+    /// Media, at `now`: how long it had been gone, if it had gone quiet.
+    fn media(&mut self, now: Instant) -> Option<Duration> {
+        let gap = self.quiet.then(|| self.media.map(|t| now - t)).flatten();
+        self.quiet = false;
+        self.media = Some(now);
+        self.any = Some(now);
+        gap
+    }
+
+    /// A report (RTCP), at `now`.
+    fn report(&mut self, now: Instant) {
+        self.any = Some(now);
+    }
+
+    /// Once a second: whether the media has just gone quiet, or the stream
+    /// silent. Nothing before the first packet: a stream that never had
+    /// one is the iPhone's to time out. While `paused`, silence isn't
+    /// counted: it counts from the resume.
+    fn tick(&mut self, now: Instant, paused: bool) -> Option<Change> {
+        if paused && self.any.is_some() {
+            self.any = Some(now);
+        }
+        if let Some(any) = self.any
+            && !self.silent
+            && now - any >= SILENCE
+        {
+            self.silent = true;
+            return Some(Change::Silent);
+        }
+        if let Some(media) = self.media
+            && !self.quiet
+            && now - media >= QUIET
+        {
+            self.quiet = true;
+            return Some(Change::Quiet);
+        }
+        None
+    }
+
+    /// When it last heard anything but media, for the log.
+    fn last_report(&self, now: Instant) -> String {
+        match (self.any, self.media) {
+            (Some(any), Some(media)) if any > media => format!("{:.1} s ago", (now - any).as_secs_f32()),
+            _ => "came before it".into(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stream_goes_quiet_then_silent() {
+        let start = Instant::now();
+        let at = |s: f32| start + Duration::from_secs_f32(s);
+        let mut heard = Heard::default();
+        assert_eq!(heard.tick(at(30.0), false), None, "nothing before the first packet");
+        assert_eq!(heard.media(at(0.0)), None);
+        assert_eq!(heard.tick(at(1.0), false), None);
+        assert_eq!(heard.tick(at(2.0), false), Some(Change::Quiet));
+        assert_eq!(heard.tick(at(3.0), false), None, "said once");
+        // Reports keep it from falling silent; media again ends the quiet.
+        heard.report(at(10.0));
+        assert_eq!(heard.tick(at(15.0), false), None);
+        assert_eq!(heard.last_report(at(15.0)), "5.0 s ago");
+        assert_eq!(heard.media(at(16.0)), Some(Duration::from_secs(16)));
+        assert_eq!(heard.tick(at(27.9), false), Some(Change::Quiet));
+        assert_eq!(heard.tick(at(28.0), false), Some(Change::Silent));
+        assert_eq!(heard.tick(at(40.0), false), None, "said once");
+    }
+
+    #[test]
+    fn a_pause_isnt_silence() {
+        let start = Instant::now();
+        let at = |s: f32| start + Duration::from_secs_f32(s);
+        let mut heard = Heard::default();
+        heard.media(at(0.0));
+        assert_eq!(heard.tick(at(2.0), true), Some(Change::Quiet), "the log still says so");
+        // Paused for a minute, with nothing at all, as the camera's stream.
+        assert_eq!(heard.tick(at(60.0), true), None);
+        // Silence counts from the resume.
+        assert_eq!(heard.tick(at(71.0), false), None);
+        assert_eq!(heard.tick(at(72.0), false), Some(Change::Silent));
+    }
 
     fn on_command(selector: u64, args: Vec<Value>) -> Value {
         dict(vec![(SELECTOR, Value::int(selector)), (ARGS, Value::Array(args))])
@@ -743,13 +940,14 @@ mod tests {
 
     #[test]
     fn the_iphone_ends_its_session_on_command() {
-        assert_eq!(ending_event(&post_event(event::USER_DISCONNECT, 2)), Some("user-disconnect"));
-        assert_eq!(ending_event(&post_event(event::CONNECTION_DISCONNECT, 1)), Some("connection-disconnect"));
+        assert_eq!(said(&post_event(event::USER_DISCONNECT, 2)), Some(Said::Ended("user-disconnect")));
+        assert_eq!(said(&post_event(event::CONNECTION_DISCONNECT, 1)), Some(Said::Ended("connection-disconnect")));
+        assert_eq!(said(&post_event(event::USER_PAUSE, 1)), Some(Said::Paused(true)));
         // What it sends as a session starts doesn't end it (trial 35).
-        assert_eq!(ending_event(&post_event("kCMContinuityCaptureEventUserResume", 1)), None);
-        assert_eq!(ending_event(&post_event("kCMContinuityCaptureEventActiveCallEnd", 3)), None);
+        assert_eq!(said(&post_event("kCMContinuityCaptureEventUserResume", 1)), Some(Said::Paused(false)));
+        assert_eq!(said(&post_event("kCMContinuityCaptureEventActiveCallEnd", 3)), None);
         // Nor does its clock, every 60 ms.
         let clock = vec![Value::int(2880u64), Value::int(88082856506583u64), Value::int(8184875545173426190u64)];
-        assert_eq!(ending_event(&on_command(command::SYNCHRONIZE_AUDIO_CLOCK, clock)), None);
+        assert_eq!(said(&on_command(command::SYNCHRONIZE_AUDIO_CLOCK, clock)), None);
     }
 }

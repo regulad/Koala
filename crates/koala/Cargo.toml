@@ -20,7 +20,8 @@ opus.workspace = true
 opusic-sys.workspace = true
 qrcode.workspace = true
 sentry.workspace = true
-tokio = { workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
+socket2.workspace = true
+tokio ={ workspace = true, features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
 usbip-audio.workspace = true
 warlock-client.workspace = true
 windows-reactor.workspace = true

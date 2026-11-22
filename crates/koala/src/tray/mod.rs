@@ -321,7 +321,7 @@ impl Application for Tray {
             .window::<about::AboutWindow>("about", about::Input { warlock: self.view.warlock.clone() })
             .notify_icon(
                 "tray",
-                NotifyIcon::new(icon(matches!(status, Status::Connected(_))))
+                NotifyIcon::new(icon(matches!(status, Status::Connected(_) | Status::Paused(_))))
                     .tooltip(format!("Koala: {}", status.heading()))
                     .on_activate(context.callback(Message::Activate))
                     .menu(menu),
@@ -332,10 +332,10 @@ impl Application for Tray {
 impl Tray {
     /// The camera with the connection: made, named after the iPhone, as it
     /// pairs (once a connection: a camera that can't be made isn't tried at
-    /// every view), and gone when the connection is.
+    /// every view), kept while it's paused, and gone when the connection is.
     fn follow_connection(&mut self, status: &Status) {
-        match status {
-            Status::Connecting(name) | Status::Connected(name) => {
+        match status.iphone() {
+            Some(name) => {
                 if self.stream_camera && !self.camera_tried {
                     self.camera_tried = true;
                     self.camera = camera(name);

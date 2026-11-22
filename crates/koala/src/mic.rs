@@ -206,6 +206,12 @@ impl Microphone {
         }
     }
 
+    /// The iPhone's packets come from a new source (SSRC), as after a pause:
+    /// their sequence numbers start afresh, from anywhere.
+    pub fn new_source(&mut self) {
+        self.last_seq = None;
+    }
+
     /// Takes one authenticated packet's sequence number and payload. A late
     /// or repeated packet is dropped; packets missing before it are
     /// concealed, up to [`MAX_CONCEAL`].
@@ -331,6 +337,11 @@ mod tests {
         mic.packet(105, &[0, 9, 1]);
         mic.packet(106, &silence(3));
         assert_eq!((mic.concealed, mic.errors), (4, 2));
+        // A new source's numbers, however far behind: taken.
+        mic.new_source();
+        mic.packet(7, &silence(4));
+        mic.packet(8, &silence(4));
+        assert_eq!((mic.decoded, mic.concealed), (5, 4));
         let ids: Vec<_> = mic.layout.unwrap().mics.iter().map(|m| m.id.clone()).collect();
         assert_eq!(ids, ["bottom-1", "back", "front", "bottom-2"]);
     }

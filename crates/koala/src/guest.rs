@@ -64,6 +64,9 @@ pub enum Event {
     Paired(Option<String>),
     /// The microphone's audio is arriving.
     Streaming,
+    /// The iPhone's user paused the session (`true`) on the phone, or
+    /// resumed it (`false`).
+    Paused(bool),
     /// The capture side is over: `None` when a session ended, or why there
     /// was none.
     Ended(Option<String>),

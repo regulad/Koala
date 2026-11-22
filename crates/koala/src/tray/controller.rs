@@ -29,6 +29,9 @@ pub enum Status {
     Connecting(String),
     /// Its audio is arriving.
     Connected(String),
+    /// Its user paused it, on the phone: still connected, the camera holding
+    /// its last picture.
+    Paused(String),
 }
 
 /// What a connection needs that Warlock reports missing.
@@ -53,6 +56,15 @@ impl Status {
             Status::Disconnected => "Disconnected".into(),
             Status::Connecting(name) => format!("Connecting to {name}…"),
             Status::Connected(name) => format!("Connected to {name}"),
+            Status::Paused(name) => format!("Paused on {name}"),
+        }
+    }
+
+    /// The iPhone's name, while there's a connection.
+    pub fn iphone(&self) -> Option<&str> {
+        match self {
+            Status::Connecting(name) | Status::Connected(name) | Status::Paused(name) => Some(name),
+            _ => None,
         }
     }
 
@@ -167,13 +179,11 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
                 Event::Qr(url) => view.qr = Qr::Code(url),
                 Event::Paired(name) => view.status = Status::Connecting(name.unwrap_or_else(|| UNNAMED.into())),
                 Event::Streaming => {
-                    let name = match &view.status {
-                        Status::Connecting(name) | Status::Connected(name) => name.clone(),
-                        _ => UNNAMED.into(),
-                    };
+                    let name = view.status.iphone().unwrap_or(UNNAMED).to_owned();
                     view.status = Status::Connected(name);
                     view.qr = Qr::Hidden;
                 }
+                Event::Paused(paused) => view.status = paused_or_not(&view.status, paused),
                 Event::Ended(why) => {
                     stop(&mut task, &mut events);
                     view.status = Status::Disconnected;
@@ -223,6 +233,16 @@ pub async fn run(mut commands: UnboundedReceiver<Command>, publish: impl Fn(&Vie
     }
 }
 
+/// The status after the iPhone's user paused or resumed. A resume comes as
+/// every session starts too (trial 35), and changes only a pause.
+fn paused_or_not(status: &Status, paused: bool) -> Status {
+    match (status, paused) {
+        (Status::Connecting(name) | Status::Connected(name), true) => Status::Paused(name.clone()),
+        (Status::Paused(name), false) => Status::Connected(name.clone()),
+        (other, _) => other.clone(),
+    }
+}
+
 /// Ends the run, and with it everything it started.
 fn stop(task: &mut Option<JoinHandle<Result<(), String>>>, events: &mut Option<UnboundedReceiver<Event>>) {
     if let Some(task) = task.take() {
@@ -255,6 +275,21 @@ mod tests {
         assert_eq!(Status::Disconnected.heading(), "Disconnected");
         assert_eq!(Status::Connecting("Parker's iPhone".into()).heading(), "Connecting to Parker's iPhone…");
         assert_eq!(Status::Connected("Parker's iPhone".into()).heading(), "Connected to Parker's iPhone");
+        assert_eq!(Status::Paused("Parker's iPhone".into()).heading(), "Paused on Parker's iPhone");
+    }
+
+    #[test]
+    fn a_pause_and_its_resume_change_only_a_connection() {
+        let (connecting, connected, paused) =
+            (Status::Connecting("x".into()), Status::Connected("x".into()), Status::Paused("x".into()));
+        assert_eq!(paused_or_not(&connected, true), paused);
+        assert_eq!(paused_or_not(&connecting, true), paused);
+        assert_eq!(paused_or_not(&paused, false), connected);
+        // The resumes every session starts with.
+        assert_eq!(paused_or_not(&connecting, false), connecting);
+        assert_eq!(paused_or_not(&connected, false), connected);
+        assert_eq!(paused_or_not(&Status::Disconnected, true), Status::Disconnected);
+        assert!(!paused.can_connect());
     }
 
     #[test]

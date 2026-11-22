@@ -1170,6 +1170,7 @@ dependencies = [
  "opusic-sys",
  "qrcode",
  "sentry",
+ "socket2",
  "tokio",
  "usbip-audio",
  "warlock-client",

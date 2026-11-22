@@ -948,6 +948,37 @@ the virtual camera.
     The camera went away, the microphones detached, and the tray said
     "Disconnected".
 
+## Pause, and an iPhone gone quiet (2026-11-21, trials 39–41)
+
+From the tray, both streams, an app on the camera.
+
+- **The iPhone's Pause and Resume, on Command:**
+  `kCMContinuityCaptureEventUserPause` and `…UserResume`, for each entity
+  (1 and 3) within 20 ms. The same `UserResume` comes as every session
+  starts.
+- **While paused, the streams fall silent.**
+  - The camera's stream stops its RTCP too (trial 39: none for 2.6 s); in
+    trials 40 and 41 both streams' reports went on into the pause.
+  - The iPhone sends a fresh AVC offer for each entity, which Koala answers
+    as at the start.
+  - On the resume, both streams come back under new SSRCs (trial 41:
+    `0x168593b9` → `0x326f54c5` for the microphones, `0x4bf436ba` →
+    `0x459d0a52` for the camera).
+- **What Koala does with that:**
+  - The tray says "Paused on" the iPhone, and the camera holds its last
+    picture.
+  - A media stream that hears nothing for 12 s ends the session, a
+    backstop for an iPhone gone without a word, but not while paused. A
+    45 s pause (trial 40) and a 38 s one (trial 41) both held.
+  - TCP keepalive on the session's connection ends a session whose iPhone
+    goes while paused.
+  - Each stream follows the iPhone's new SSRC once the old one has been
+    quiet for a second. Until it did, Koala kept to the microphones' first
+    SSRC and decoded nothing after a resume: trials 39 and 40's microphone
+    came up short by the pause and everything after it (11.3 s and
+    54.8 s). In trial 41 it was short by the pause alone (39.1 s, of
+    38.4 s paused).
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -976,7 +1007,10 @@ the virtual camera.
      picks a ULA of another adapter's;
   7. answer the microphones' first clock message on Command with selector
      5, and end the session on the iPhone's `UserDisconnect` or
-     `ConnectionDisconnect` there (trials 35–38).
+     `ConnectionDisconnect` there (trials 35–38);
+  8. follow its Pause and Resume, and the new SSRCs a resume brings; end
+     the session when a stream has heard nothing for 12 s, unless paused
+     (trials 39–41).
 
 ## Open
 
