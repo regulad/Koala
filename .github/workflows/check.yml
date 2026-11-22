@@ -52,14 +52,14 @@ jobs:
       # which never save. One key for all of them (`shared-key`); the key
       # takes the CARGO* and RUST* variables in a step's environment, so
       # cargo-deny's are its own step's, not the job's. The workspace's own
-      # crates are cached too (Parker, 2026-11-22), so their object files
-      # and build scripts' outputs are kept with the dependencies'; it's
-      # read only on saving, so the jobs that only read needn't say it.
+      # crates aren't cached (no `cache-workspace-crates`): a checkout makes
+      # their files newer than any cached build, so Cargo rebuilds them
+      # anyway, and setting the files' times back can have it test stale
+      # code (PLAN.md, "Pipeline").
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           shared-key: koala
           save-if: ${{ github.ref == 'refs/heads/master' }}
-          cache-workspace-crates: true
       # The FFmpeg Koala links, pinned by its SHA-256 (tools/ffmpeg.ps1).
       - name: FFmpeg
         shell: pwsh
