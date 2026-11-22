@@ -8,9 +8,15 @@
 //! - **Only when the camera's user allows them.** The camera service doesn't
 //!   see the user's `DO_NOT_TRACK`, so Koala says, in the camera's
 //!   [`koala_vcam::DIAGNOSTICS_ALLOWED`]. They start with the first source
-//!   made for a camera that allows them. Once a camera doesn't, this process
-//!   sends nothing more until it ends: the camera service serves every
-//!   user's cameras, and the SDK's client is the process's.
+//!   made for a camera that allows them, in each process that makes one:
+//!   the camera service's, and Koala's own as it starts the camera (Koala
+//!   sets the attribute first). Once a camera doesn't, that process sends
+//!   nothing more until it ends: the camera service serves every user's
+//!   cameras, and the SDK's client is the process's.
+//! - **Tried (2026-11-21),** with a trial build and an event of its own on
+//!   starting: one reached `koala-vcam` from each of those processes, the
+//!   camera service's from session 0, with no user, no address, and
+//!   `server_name` `koala-vcam-source`.
 //! - **Started there, not in `DllMain`,** which runs under the loader lock.
 //!   The DLL is then pinned ([`crate::pin`]): the SDK's threads run its code
 //!   until the process ends, so it must never be unloaded under them.

@@ -3,8 +3,10 @@
 //!
 //! Windows' camera service, the Frame Server, loads it as the COM class
 //! [`koala_vcam::CLSID`] when an app opens the camera Koala makes (and its
-//! monitor loads it when Koala makes it), as LocalService in session 0. It
-//! runs there, not in Koala: what it has from Koala comes through the
+//! monitor loads it when Koala makes it), as LocalService in session 0.
+//! Koala's own process loads it too, and makes a source, as it starts the
+//! camera (2026-11-21: its log was then in the user's temporary directory).
+//! It runs there, not in Koala: what it has from Koala comes through the
 //! camera's attributes (the user, [`koala_vcam::USER_SID`]) and the shared
 //! memory [`koala_vcam::frames`] describes. `regsvr32` registers it, under
 //! `HKEY_LOCAL_MACHINE` (the service reads no user's classes): Administrator

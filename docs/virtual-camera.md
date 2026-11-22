@@ -110,6 +110,16 @@ The DLL loads only what Windows has: the Visual C++ runtime is linked in
   10 Mbit/s with none) followed the freeze; it wasn't its cause. Trials since
   have run with WSL off: a live dump then completes, and is kept in
   `C:\Windows\LiveKernelReports`, naming what asked for it.
+- **The source's diagnostics** (`crates/koala-vcam-source/src/diagnostics.rs`;
+  PLAN.md, "Diagnostics"): a trial build, with an event of its own on
+  starting, under `koala vcam` with `DO_NOT_TRACK=0`, opened by FFmpeg.
+  - Two events reached `koala-vcam`, with no user, no address, and
+    `server_name` `koala-vcam-source`: one from the camera service, in
+    session 0, and one from Koala's own process. Starting the camera loads
+    the DLL there too, and a source is made in it; the source's log then
+    goes to the user's `%TEMP%`.
+  - The camera service then served FFmpeg as before: 92 pictures in 4 s,
+    none failed.
 
 ## Prior art
 
@@ -128,11 +138,6 @@ For the shared memory: [DeskCam](https://github.com/sinnafuls/rust-virtual-cam)
 
 ## Open
 
-- **Diagnostics for the source, untried live.** It reports to a Sentry
-  project of its own, `koala-vcam`, as each of Warlock's programs has, its
-  user's say coming in the camera's attributes, as the SID does
-  (`crates/koala-vcam-source/src/diagnostics.rs`; PLAN.md, "Diagnostics").
-  Whether the camera service may reach Sentry from session 0 isn't known.
 - **Formats:** NV12 alone so far. Apps that want others (YUY2, RGB32 for
   some DirectShow ones) are untried; Windows converted to YUY2 for FFmpeg.
 - **Apps:** Windows' Camera works, and FFmpeg's DirectShow input; browsers,
