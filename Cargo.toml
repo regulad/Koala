@@ -5,9 +5,11 @@ members = ["crates/koala", "crates/koala-capture", "crates/koala-diagnostics", "
 exclude = ["third_party/warlock"]
 
 [workspace.package]
-# Koala's one version, which every crate carries: semver, with 0.y.z read as
-# y for breaking changes, as in Warlock.
-version = "0.0.0"
+# Koala's one version, which every crate carries: the release's date,
+# year.month.day, as 2026.11.22, and tagged v2026.11.22 (Parker,
+# 2026-11-22). Its package records it as 26.11.22, which Windows Installer
+# takes (koala-msi).
+version = "2026.11.22"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 authors = ["Parker Wahle <regulad@regulad.xyz>"]
@@ -15,11 +17,11 @@ authors = ["Parker Wahle <regulad@regulad.xyz>"]
 # Every dependency was released at least two weeks before it was added
 # (PLAN.md, "Pinned decisions"); Cargo.lock pins transitive ones that weren't.
 [workspace.dependencies]
-koala-capture = { path = "crates/koala-capture", version = "0.0.0" }
-koala-diagnostics = { path = "crates/koala-diagnostics", version = "0.0.0" }
-koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
-koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
-koala-vcam = { path = "crates/koala-vcam", version = "0.0.0" }
+koala-capture = { path = "crates/koala-capture", version = "2026.11.22" }
+koala-diagnostics = { path = "crates/koala-diagnostics", version = "2026.11.22" }
+koala-pairing = { path = "crates/koala-pairing", version = "2026.11.22" }
+koala-rapport = { path = "crates/koala-rapport", version = "2026.11.22" }
+koala-vcam = { path = "crates/koala-vcam", version = "2026.11.22" }
 # Warlock's API client (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it
 # under the AGPL), from the Warlock submodule, which is pinned to a release
 # (`git submodule update --init`; Warlock's own submodules aren't needed).

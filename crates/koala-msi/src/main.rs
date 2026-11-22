@@ -110,6 +110,9 @@ const USBIP_FOUND: &str = "USBIPFOUND";
 const RUNTIME_DLLS: [(&str, &str); 1] = [("VCRUNTIME140", "VCRT140.DLL|vcruntime140.dll")];
 /// The property recording the least runtime version, for `winget`.
 const RUNTIME_MIN_PROPERTY: &str = "KoalaVcRuntimeMin";
+/// The property recording Koala's version, the date, for `winget`: the
+/// ProductVersion can't be it ([`product_version_of`]).
+const VERSION_PROPERTY: &str = "KoalaVersion";
 
 /// As the winget package's publisher, as Warlock's.
 const MANUFACTURER: &str = "Regulad";
@@ -165,11 +168,12 @@ fn ffmpeg_dlls(root: &Path) -> Result<Vec<(String, PathBuf)>> {
     Ok(dlls)
 }
 
-/// Every table, filled in. `ffmpeg` are the FFmpeg DLLs' names, each its own
-/// component; `runtime_min` is the least Visual C++ runtime version (`14.50`)
-/// the programs need.
+/// Every table, filled in. `version` is Koala's, a date, and
+/// `product_version` the package's ([`product_version_of`]); `ffmpeg` are
+/// the FFmpeg DLLs' names, each its own component; `runtime_min` is the
+/// least Visual C++ runtime version (`14.50`) the programs need.
 fn tables(
-    version: &str,
+    (version, product_version): (&str, &str),
     product_code: &str,
     runtime_min: &str,
     (licence, privacy): (&str, &str),
@@ -185,10 +189,11 @@ fn tables(
     let secure = format!("OLDERFOUND;NEWERFOUND;{WARLOCK_FOUND};{USBIP_FOUND}");
     for (k, v) in [
         (RUNTIME_MIN_PROPERTY, runtime_min),
+        (VERSION_PROPERTY, version),
         ("ProductCode", product_code),
         ("UpgradeCode", UPGRADE_CODE),
         ("ProductName", "Koala"),
-        ("ProductVersion", version),
+        ("ProductVersion", product_version),
         ("Manufacturer", MANUFACTURER),
         ("ProductLanguage", "1033"),
         ("ALLUSERS", "1"),
@@ -288,14 +293,14 @@ fn tables(
         .row(vec![
             s(UPGRADE_CODE),
             None,
-            s(version),
+            s(product_version),
             None,
             n(UPGRADE_MIGRATE_FEATURES | UPGRADE_MAX_INCLUSIVE),
             None,
             s("OLDERFOUND"),
         ])
         // Newer: only noticed, to refuse the install.
-        .row(vec![s(UPGRADE_CODE), s(version), None, None, n(UPGRADE_ONLY_DETECT), None, s("NEWERFOUND")])
+        .row(vec![s(UPGRADE_CODE), s(product_version), None, None, n(UPGRADE_ONLY_DETECT), None, s("NEWERFOUND")])
         // Warlock, at its least or later: only noticed.
         .row(vec![
             s(WARLOCK_UPGRADE_CODE),
@@ -428,12 +433,26 @@ fn tables(
 }
 
 /// Koala's version: the workspace's, which this builder shares with every
-/// other crate.
-fn koala_version() -> Result<String> {
-    Ok(product_version(env!("CARGO_PKG_VERSION"))?.to_string())
+/// other crate, a date, as `2026.11.22` (Cargo.toml; Parker, 2026-11-22).
+const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// The ProductVersion Windows Installer takes for Koala's version: the year
+/// less 2000, then the month and day, as `26.11.22` for `2026.11.22`, since
+/// a ProductVersion is at most 255.255.65535. Dates keep their order in it,
+/// which upgrades compare, until 2255.
+fn product_version_of(version: &str) -> Result<String> {
+    let bad = || format!("{version} isn't a date, year.month.day, from 2000");
+    let parts: Vec<u32> =
+        version.split('.').map(str::parse).collect::<std::result::Result<_, _>>().map_err(|_| bad())?;
+    let [year, month, day] = parts[..] else { return Err(bad().into()) };
+    if !(2000..=2255).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day) {
+        return Err(bad().into());
+    }
+    Ok(product_version(&format!("{}.{month}.{day}", year - 2000))?.to_string())
 }
 
 fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
+    let product_version = product_version_of(version)?;
     let release = root.join("target").join("release");
     let ffmpeg = ffmpeg_dlls(root)?;
     // The File key, the component, the `short|long` name, the source, and
@@ -495,7 +514,8 @@ fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
     let product_code = new_guid()?;
     let package_code = new_guid()?;
     let db = Database::create(out)?;
-    for t in tables(version, &product_code, &runtime_min, (&licence, &privacy), &files, &names) {
+    let versions = (version, product_version.as_str());
+    for t in tables(versions, &product_code, &runtime_min, (&licence, &privacy), &files, &names) {
         db.import(&t)?;
     }
     db.cabinet(CABINET, &files)?;
@@ -511,7 +531,8 @@ fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
     })?;
     db.commit()?;
     println!(
-        "{} (Koala {version}, product code {product_code}, Visual C++ runtime {runtime_min} or later)",
+        "{} (Koala {version}, ProductVersion {product_version}, product code {product_code}, Visual C++ runtime \
+         {runtime_min} or later)",
         out.display()
     );
     Ok(())
@@ -523,7 +544,9 @@ fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
 fn winget(root: &Path, msi: &Path, url: &str, out: Option<PathBuf>) -> Result<()> {
     let p = package_properties(msi)?;
     let get = |k: &str| p.get(k).map(String::as_str).ok_or_else(|| format!("{}: no {k} property", msi.display()));
-    let version = get("ProductVersion")?;
+    // Koala's version, the date, which winget carries; winget knows the
+    // installed product by its ProductVersion.
+    let version = get(VERSION_PROPERTY)?;
     let runtime = VcRuntime { dlls: &RUNTIME_DLLS, min: get(RUNTIME_MIN_PROPERTY)?.to_string() };
     let dependencies = [
         runtime.dependency(),
@@ -545,6 +568,7 @@ fn winget(root: &Path, msi: &Path, url: &str, out: Option<PathBuf>) -> Result<()
              the programs link to.",
         ),
         dependencies: &dependencies,
+        package_version: Some(version),
     };
     let manifests = winget::manifests(&manifest, msi, &p, url)?;
     let dir = out.unwrap_or_else(|| root.join("target").join("msi").join("winget").join(version));
@@ -587,7 +611,7 @@ fn main() -> Result<()> {
             _ => return Err(format!("unknown argument {a}\n{USAGE}").into()),
         }
     }
-    let version = koala_version()?;
+    let version = VERSION;
     if !no_build {
         let status = Command::new("cargo")
             .args(["build", "--release", "-p", "koala", "-p", "koala-vcam-source"])
@@ -599,7 +623,7 @@ fn main() -> Result<()> {
     }
     let out = out.unwrap_or_else(|| root.join("target").join("msi").join(format!("Koala-{version}-x64.msi")));
     std::fs::create_dir_all(out.parent().ok_or("no folder for --out")?)?;
-    build(&root, &out, &version)
+    build(&root, &out, version)
 }
 
 #[cfg(test)]
@@ -608,7 +632,24 @@ mod tests {
 
     fn all() -> Vec<Table> {
         let ffmpeg = ["avcodec-63.dll".to_string(), "avutil-61.dll".to_string()];
-        tables("0.0.0", "{00000000-0000-0000-0000-000000000000}", "14.50", ("{\\rtf1 x}", "{\\rtf1 y}"), &[], &ffmpeg)
+        let versions = ("2026.11.22", "26.11.22");
+        tables(versions, "{00000000-0000-0000-0000-000000000000}", "14.50", ("{\\rtf1 x}", "{\\rtf1 y}"), &[], &ffmpeg)
+    }
+
+    /// A date's ProductVersion: the year less 2000, in the dates' order;
+    /// anything that isn't a date, refused.
+    #[test]
+    fn dates_are_product_versions() {
+        assert_eq!(product_version_of("2026.11.22").unwrap(), "26.11.22");
+        assert_eq!(product_version_of("2027.1.5").unwrap(), "27.1.5");
+        assert!(product_version_of(VERSION).is_ok(), "Koala's own version, {VERSION}, is a date");
+        for bad in ["0.0.0", "2026.13.1", "2026.11.32", "2026.11", "2026.11.22.1", "2256.1.1", "v2026.11.22"] {
+            assert!(product_version_of(bad).is_err(), "{bad}");
+        }
+        // Upgrades compare them as numbers, part by part.
+        let as_numbers = |v: &str| v.split('.').map(|p| p.parse::<u32>().unwrap()).collect::<Vec<_>>();
+        let order = ["2026.11.22", "2026.12.1", "2027.1.1"].map(|d| as_numbers(&product_version_of(d).unwrap()));
+        assert!(order.is_sorted());
     }
 
     fn rows<'a>(all: &'a [Table], name: &str) -> &'a [Vec<warlock_msi_kit::Cell>] {
