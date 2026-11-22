@@ -19,17 +19,25 @@ use koala_capture::srtp;
 use koala_capture::video::{self, AccessUnit, Depacketizer, nal, nal_type};
 
 use crate::mkv::MkvWriter;
+use crate::vcam::FeedThread;
 
-/// Where `--camera` records the video, if anywhere: also what adds the
-/// camera to the session.
+/// Where `--camera` records the video, if anywhere.
 pub static RECORD: OnceLock<PathBuf> = OnceLock::new();
 
-/// The camera's stream: counted, and recorded to `RECORD` if it's set.
+/// Whether to ask the iPhone for its camera: to record it, or for the
+/// virtual camera ([`crate::vcam`]).
+pub fn wanted() -> bool {
+    RECORD.get().is_some() || crate::vcam::ON.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// The camera's stream: counted, recorded to `RECORD` if it's set, and
+/// given to the virtual camera if it's up.
 pub struct Recording {
     path: Option<PathBuf>,
     /// Whether the recording is still to start, at the first keyframe.
     waiting: bool,
     recording: Option<MkvWriter>,
+    feed: Option<FeedThread>,
     depacketizer: Depacketizer,
     /// The latest parameter sets: VPS, SPS, PPS.
     parameters: [Option<Vec<u8>>; 3],
@@ -55,7 +63,9 @@ impl Recording {
                 false
             }
         });
-        Self::to(path, writable)
+        let mut recording = Self::to(path, writable);
+        recording.feed = FeedThread::start();
+        recording
     }
 
     fn to(path: Option<PathBuf>, waiting: bool) -> Self {
@@ -63,6 +73,7 @@ impl Recording {
             path,
             waiting,
             recording: None,
+            feed: None,
             depacketizer: Depacketizer::default(),
             parameters: [None, None, None],
             packets: 0,
@@ -78,7 +89,7 @@ impl Recording {
         self.packets += 1;
         self.bytes += rtp.len() as u64;
         *self.payload_types.entry(rtp[1] & 0x7f).or_default() += 1;
-        if !self.waiting && self.recording.is_none() {
+        if !self.waiting && self.recording.is_none() && self.feed.is_none() {
             return;
         }
         let seq = u16::from_be_bytes([rtp[2], rtp[3]]);
@@ -90,6 +101,9 @@ impl Recording {
     }
 
     fn picture(&mut self, unit: AccessUnit) {
+        if let Some(feed) = &mut self.feed {
+            feed.send(unit.clone());
+        }
         for n in &unit.nals {
             let slot = match nal_type(n) {
                 Some(nal::VPS) => 0,

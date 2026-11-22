@@ -11,12 +11,15 @@
 
 pub mod camera;
 pub mod capture;
+pub mod decode;
 pub mod diagnostics;
 mod dnssd;
 pub mod guest;
 pub mod mic;
-mod mkv;
+pub mod mkv;
+pub mod settings;
 pub mod tray;
+pub mod vcam;
 
 /// A random (version 4) UUID, as `-[NSUUID UUIDString]` writes one:
 /// uppercase hexadecimal with hyphens.

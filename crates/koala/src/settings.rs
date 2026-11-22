@@ -1,0 +1,81 @@
+//! Koala's settings, each the user's own, under
+//! `HKEY_CURRENT_USER\Software\Koala`:
+//! - `ForceSoftwareDecoding` (a DWORD, 1 for on): decode the camera with
+//!   FFmpeg's decoder even where Windows has one ([`crate::decode`]). Off
+//!   unless set. The tray's Options menu sets it; `koala guest
+//!   --software-decode` turns it on for one run.
+
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use windows_sys::Win32::System::Registry::{
+    HKEY_CURRENT_USER, REG_DWORD, RRF_RT_REG_DWORD, RegGetValueW, RegSetKeyValueW,
+};
+
+use crate::tray::win::wide;
+
+/// An on-or-off setting: a DWORD under a key of the user's.
+pub struct Switch {
+    key: &'static str,
+    name: &'static str,
+}
+
+/// Whether to decode the camera with FFmpeg's decoder, whatever Windows has.
+pub const FORCE_SOFTWARE_DECODING: Switch = Switch { key: r"Software\Koala", name: "ForceSoftwareDecoding" };
+
+/// `koala guest --software-decode`: software decoding for this run, whatever
+/// the setting.
+pub static SOFTWARE_DECODING_THIS_RUN: AtomicBool = AtomicBool::new(false);
+
+/// Whether the camera is to be decoded in software: the setting, or this run.
+pub fn software_decoding() -> bool {
+    SOFTWARE_DECODING_THIS_RUN.load(Ordering::Relaxed) || FORCE_SOFTWARE_DECODING.on()
+}
+
+impl Switch {
+    /// Whether it's on; off where it's never been set.
+    pub fn on(&self) -> bool {
+        let (key, name) = (wide(self.key), wide(self.name));
+        let (mut data, mut size) = (0u32, 4u32);
+        let status = unsafe {
+            RegGetValueW(
+                HKEY_CURRENT_USER,
+                key.as_ptr(),
+                name.as_ptr(),
+                RRF_RT_REG_DWORD,
+                std::ptr::null_mut(),
+                (&raw mut data).cast(),
+                &mut size,
+            )
+        };
+        status == 0 && data != 0
+    }
+
+    /// Turns it on or off, making its key if need be.
+    pub fn set(&self, on: bool) -> Result<(), String> {
+        let (key, name) = (wide(self.key), wide(self.name));
+        let data = u32::from(on);
+        let status = unsafe {
+            RegSetKeyValueW(HKEY_CURRENT_USER, key.as_ptr(), name.as_ptr(), REG_DWORD, (&raw const data).cast(), 4)
+        };
+        if status == 0 { Ok(()) } else { Err(format!("{}\\{}: error {status}", self.key, self.name)) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows_sys::Win32::System::Registry::RegDeleteTreeW;
+
+    #[test]
+    fn a_switch_is_off_until_set() {
+        const ROOT: &str = r"Software\Koala-test-settings";
+        let switch = Switch { key: ROOT, name: "Test" };
+        assert!(!switch.on());
+        switch.set(true).unwrap();
+        assert!(switch.on());
+        switch.set(false).unwrap();
+        assert!(!switch.on());
+        let root = wide(ROOT);
+        unsafe { RegDeleteTreeW(HKEY_CURRENT_USER, root.as_ptr()) };
+    }
+}

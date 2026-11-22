@@ -54,6 +54,17 @@ pub fn is_parameter_set(kind: u8) -> bool {
     matches!(kind, nal::VPS | nal::SPS | nal::PPS)
 }
 
+/// NAL units in Annex B (H.265 annex B): each after a four-byte start code,
+/// as decoders and FFmpeg's muxers take them.
+pub fn annex_b<T: AsRef<[u8]>>(units: impl IntoIterator<Item = T>) -> Vec<u8> {
+    let mut out = Vec::new();
+    for unit in units {
+        out.extend_from_slice(&[0, 0, 0, 1]);
+        out.extend_from_slice(unit.as_ref());
+    }
+    out
+}
+
 /// One picture's NAL units, with what came ahead of it (parameter sets,
 /// SEI), and its RTP timestamp.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]

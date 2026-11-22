@@ -16,9 +16,7 @@ use std::ptr;
 
 use ffmpeg::{Dictionary, Packet, Rational, codec, encoder, format, media};
 use ffmpeg_next as ffmpeg;
-use koala_capture::video::Sps;
-
-const START_CODE: [u8; 4] = [0, 0, 0, 1];
+use koala_capture::video::{AccessUnit, Sps, annex_b};
 
 /// A Matroska file being written.
 pub struct MkvWriter {
@@ -46,8 +44,7 @@ impl MkvWriter {
         let mut parameters = codec::Parameters::new();
         parameters.set_medium(media::Type::Video);
         parameters.set_id(codec::Id::HEVC);
-        let extradata: Vec<u8> =
-            [vps, sps, pps].iter().flat_map(|unit| START_CODE.iter().chain(unit.iter())).copied().collect();
+        let extradata = annex_b([vps, sps, pps]);
         // SAFETY: `parameters` owns its AVCodecParameters, which frees the
         // extradata with av_free; FFmpeg wants it from av_malloc, padded.
         unsafe {
@@ -94,8 +91,7 @@ impl MkvWriter {
         if let Some((_, at)) = self.last {
             self.step = time - at;
         }
-        let data: Vec<u8> = units.into_iter().flat_map(|unit| START_CODE.iter().chain(unit.iter())).copied().collect();
-        let mut packet = Packet::copy(&data);
+        let mut packet = Packet::copy(&annex_b(units));
         packet.set_stream(0);
         packet.set_pts(Some(time));
         packet.set_dts(Some(time));
@@ -132,6 +128,57 @@ impl MkvWriter {
     pub fn finish(mut self) -> Result<(), String> {
         self.output.write_trailer().map_err(|e| format!("the Matroska index: {e}"))
     }
+}
+
+/// A recording's pictures, read back by FFmpeg's demuxer: each sample's NAL
+/// units (length-prefixed in Matroska), the parameter sets of its `hvcC`
+/// ahead of the first, its time on the camera's RTP clock
+/// (`koala_capture::video::CLOCK_RATE`).
+pub fn read(path: &Path) -> Result<Vec<AccessUnit>, String> {
+    ffmpeg::init().map_err(|e| e.to_string())?;
+    let mut input = format::input(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let stream = input.stream(0).ok_or("no stream")?;
+    let time_base = stream.time_base();
+    // SAFETY: the stream's parameters, which it owns, while it's open.
+    let hvcc = unsafe {
+        let p = stream.parameters().as_ptr();
+        if (*p).extradata.is_null() {
+            return Err("no hvcC".into());
+        }
+        std::slice::from_raw_parts((*p).extradata, (*p).extradata_size as usize).to_vec()
+    };
+    // ISO/IEC 14496-15's HEVCDecoderConfigurationRecord: 22 bytes, the
+    // NAL unit length's size in the last's low bits, then arrays of units.
+    let short = || "an hvcC cut short".to_string();
+    let length_size = usize::from(hvcc.get(21).ok_or_else(short)? & 3) + 1;
+    let mut parameter_sets = Vec::new();
+    let mut rest = hvcc.get(23..).ok_or_else(short)?;
+    for _ in 0..hvcc[22] {
+        let [_, high, low, tail @ ..] = rest else { return Err(short()) };
+        rest = tail;
+        for _ in 0..u16::from_be_bytes([*high, *low]) {
+            let [high, low, tail @ ..] = rest else { return Err(short()) };
+            let len = usize::from(u16::from_be_bytes([*high, *low]));
+            parameter_sets.push(tail.get(..len).ok_or_else(short)?.to_vec());
+            rest = &tail[len..];
+        }
+    }
+    let mut units = Vec::new();
+    for (_, packet) in input.packets() {
+        let mut nals = if units.is_empty() { parameter_sets.clone() } else { Vec::new() };
+        let mut data = packet.data().unwrap_or_default();
+        while data.len() > length_size {
+            let len = data[..length_size].iter().fold(0usize, |n, b| (n << 8) | usize::from(*b));
+            let Some(nal) = data.get(length_size..length_size + len) else { break };
+            nals.push(nal.to_vec());
+            data = &data[length_size + len..];
+        }
+        let pts = packet.pts().unwrap_or(0);
+        let timestamp = pts * i64::from(time_base.numerator()) * i64::from(koala_capture::video::CLOCK_RATE)
+            / i64::from(time_base.denominator());
+        units.push(AccessUnit { timestamp: timestamp as u32, nals });
+    }
+    Ok(units)
 }
 
 #[cfg(test)]

@@ -83,7 +83,7 @@ pub async fn run(
     let port = iphone.port();
     // The session, timed for the diagnostics: its kind, how it went and how
     // long it lasted, and nothing about the iPhone but its model.
-    let kind = if camera::RECORD.get().is_some() { "microphone+camera" } else { "microphone" };
+    let kind = if camera::wanted() { "microphone+camera" } else { "microphone" };
     let mut timed = crate::diagnostics::Timed::start(kind, "capture.session");
     let Ok(Ok(stream)) = tokio::time::timeout(Duration::from_secs(3), TcpStream::connect(iphone)).await else {
         timed.fail("no-connection");
@@ -125,7 +125,7 @@ pub async fn run(
     // own, which salts its stream's SRTP key (`docs/guest-pairing.md`, "Both
     // at once").
     let mut configurations = vec![Configuration::microphone(uuid_v4(), 1)];
-    if camera::RECORD.get().is_some() {
+    if camera::wanted() {
         configurations.push(Configuration::camera(uuid_v4(), 1, StreamFormat::hd_1080p30()));
     }
     let ssrcs = configurations

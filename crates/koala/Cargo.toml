@@ -13,6 +13,7 @@ getrandom.workspace = true
 koala-capture.workspace = true
 koala-pairing.workspace = true
 koala-rapport.workspace = true
+koala-vcam.workspace = true
 opus.workspace = true
 # Not used directly: pins opus's libopus build (PLAN.md, avc-media).
 opusic-sys.workspace = true
@@ -30,6 +31,15 @@ windows = { workspace = true, features = [
     "Foundation_Collections",
     "Graphics",
     "Storage_Streams",
+    # The camera's decoding (src/decode.rs).
+    "Win32_Graphics_Direct3D",
+    "Win32_Graphics_Direct3D11",
+    "Win32_Graphics_Dxgi",
+    "Win32_Graphics_Dxgi_Common",
+    "Win32_Media_MediaFoundation",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
 ] }
 windows-sys = { workspace = true, features = [
     "Win32_Foundation",

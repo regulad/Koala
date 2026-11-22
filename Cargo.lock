@@ -1164,6 +1164,7 @@ dependencies = [
  "koala-capture",
  "koala-pairing",
  "koala-rapport",
+ "koala-vcam",
  "opus",
  "opusic-sys",
  "qrcode",
@@ -1217,6 +1218,23 @@ dependencies = [
  "koala-pairing",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "koala-vcam"
+version = "0.0.0"
+dependencies = [
+ "windows",
+ "windows-core 0.62.2",
+]
+
+[[package]]
+name = "koala-vcam-source"
+version = "0.0.0"
+dependencies = [
+ "koala-vcam",
+ "windows",
+ "windows-core 0.62.2",
 ]
 
 [[package]]

@@ -15,6 +15,19 @@ render itself, as printed (Parker, 2026-11-20).
 bitmap in Photos added a window to every trial and a file to `%TEMP%` per
 run, for nothing the terminal didn't already do.
 
+## The virtual camera's source runs installed, not as built
+
+Windows' camera service loads `koala_vcam_source.dll` from where
+`tools/vcam.ps1` installed it (`%ProgramData%\Koala`, registered under
+`HKEY_LOCAL_MACHINE`), not from `target`. After changing
+`crates/koala-vcam-source`, build it (`cargo build --release -p
+koala-vcam-source`) and install it again with `sudo pwsh tools/vcam.ps1`,
+telling Parker a UAC prompt is coming; the script stops the camera services
+so that they let go of the old copy (`docs/virtual-camera.md`).
+
+**Why:** a trial run against the old copy tests nothing that changed, and
+says so nowhere.
+
 ## Keep the diagnostics anonymous, and `PRIVACY.md` true
 
 What Koala sends to Sentry (`crates/koala/src/diagnostics.rs`) never

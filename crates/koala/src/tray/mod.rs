@@ -10,8 +10,10 @@
 //!   Bluetooth 5 adapter", "Bluetooth is off"); "Disconnected",
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
-//! - a separator, then Options (a submenu: "Start on logon", on or off,
-//!   [`startup`]), About, which opens About Koala ([`about`]), and Quit.
+//! - a separator, then Options (a submenu, each item on or off: "Start on
+//!   logon", [`startup`]; "Force software decoding", for the camera,
+//!   [`crate::settings`]), About, which opens About Koala ([`about`]), and
+//!   Quit.
 //!
 //! Reactor's menu items are plain text for now, so the status row is the
 //! menu's own size and About has no icon (Parker's choice, 2026-11-20:
@@ -32,7 +34,7 @@ pub mod display;
 mod glyph;
 mod qr;
 mod startup;
-mod win;
+pub(crate) mod win;
 
 use std::path::PathBuf;
 
@@ -43,6 +45,8 @@ use windows_sys::Win32::System::Threading::CreateMutexW;
 use windows_sys::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 
 pub use controller::{Command, Qr, Status, View};
+
+use crate::settings;
 use win::{system_dark, wide};
 
 /// The icon's sizes: Windows picks the one for the taskbar's scale.
@@ -87,6 +91,9 @@ struct Tray {
     _runtime: tokio::runtime::Runtime,
     /// Whether Windows will start Koala at logon ([`startup`]).
     start_on_logon: bool,
+    /// Whether the camera is decoded by FFmpeg, whatever Windows has
+    /// ([`crate::settings`]).
+    software_decoding: bool,
     /// The cursor while the code is being made.
     busy: busy::Busy,
 }
@@ -126,6 +133,7 @@ impl Application for Tray {
             _bridge: bridge,
             _runtime: runtime,
             start_on_logon,
+            software_decoding: settings::FORCE_SOFTWARE_DECODING.on(),
             busy: busy::Busy::new(),
         }
     }
@@ -159,6 +167,13 @@ impl Application for Tray {
                         println!("koala-tray: start on logon: {e}");
                     }
                     self.start_on_logon = startup::KOALA.enabled();
+                }
+                // Taken up by the next session's camera.
+                Some("software") => {
+                    if let Err(e) = settings::FORCE_SOFTWARE_DECODING.set(!self.software_decoding) {
+                        println!("koala-tray: force software decoding: {e}");
+                    }
+                    self.software_decoding = settings::FORCE_SOFTWARE_DECODING.on();
                 }
                 _ => {}
             },
@@ -199,7 +214,10 @@ impl Application for Tray {
                 MenuItem::submenu(
                     "options",
                     "Options",
-                    [MenuItem::item("logon", if self.start_on_logon { "✓  Start on logon" } else { "Start on logon" })],
+                    [
+                        MenuItem::item("logon", checked(self.start_on_logon, "Start on logon")),
+                        MenuItem::item("software", checked(self.software_decoding, "Force software decoding")),
+                    ],
                 ),
                 MenuItem::item("about", "About"),
                 MenuItem::item("quit", "Quit"),
@@ -223,6 +241,11 @@ impl Application for Tray {
                     .menu(menu),
             )
     }
+}
+
+/// An on-or-off item's label: with a check mark when on.
+fn checked(on: bool, label: &str) -> String {
+    if on { format!("✓  {label}") } else { label.to_owned() }
 }
 
 /// The tray icon's file: the microphone, white on a dark taskbar and black
