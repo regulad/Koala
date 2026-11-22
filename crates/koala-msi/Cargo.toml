@@ -1,0 +1,15 @@
+[package]
+name = "koala-msi"
+description = "Builds Koala's MSI with Windows' own Windows Installer API and makecab, no installer toolchain, on Warlock's warlock-msi-kit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+# The camera's COM class, which the package registers.
+koala-vcam.workspace = true
+# Names the FFmpeg DLLs' components (`component_guid`).
+sha2.workspace = true
+warlock-msi-kit.workspace = true

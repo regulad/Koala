@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/koala", "crates/koala-capture", "crates/koala-diagnostics", "crates/koala-pairing", "crates/koala-rapport", "crates/koala-vcam", "crates/koala-vcam-source"]
+members = ["crates/koala", "crates/koala-capture", "crates/koala-diagnostics", "crates/koala-msi", "crates/koala-pairing", "crates/koala-rapport", "crates/koala-vcam", "crates/koala-vcam-source"]
 # Warlock's crates belong to Warlock's own workspace, not this one.
 exclude = ["third_party/warlock"]
 
@@ -24,6 +24,9 @@ koala-vcam = { path = "crates/koala-vcam", version = "0.0.0" }
 # under the AGPL), from the Warlock submodule, which is pinned to a release
 # (`git submodule update --init`; Warlock's own submodules aren't needed).
 warlock-client = { path = "third_party/warlock/crates/warlock-client", version = "0.2.0" }
+# Warlock's MSI builder's machinery (GPL-2.0-only OR AGPL-3.0-or-later; Koala
+# takes it under the AGPL), which koala-msi builds Koala's package with.
+warlock-msi-kit = { path = "third_party/warlock/crates/warlock-msi-kit", version = "0.2.5" }
 
 aes = "0.9.4"
 apple-opack = "1.1.0"

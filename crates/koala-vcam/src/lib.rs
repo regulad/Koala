@@ -20,6 +20,10 @@ use windows::core::{GUID, HRESULT, HSTRING, PCWSTR, s, w};
 /// The media source's COM class.
 pub const CLSID: GUID = GUID::from_u128(0x08227305_3597_4cca_b439_905a2395c9ef);
 
+/// The class's name, as its registration gives it: the DLL's own
+/// (`regsvr32`) and the installer's (`koala-msi`).
+pub const CLASS_NAME: &str = "Koala's virtual camera";
+
 /// The camera's attribute that names the user whose Koala feeds it: their
 /// SID, a string. The media source allows its shared memory to that user
 /// alone ([`frames`]).

@@ -1207,6 +1207,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "koala-msi"
+version = "0.0.0"
+dependencies = [
+ "koala-vcam",
+ "sha2",
+ "warlock-msi-kit",
+]
+
+[[package]]
 name = "koala-pairing"
 version = "0.0.0"
 dependencies = [
@@ -2696,6 +2705,14 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "warlock-msi-kit"
+version = "0.2.5"
+dependencies = [
+ "sha2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

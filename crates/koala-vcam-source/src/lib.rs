@@ -144,7 +144,8 @@ extern "system" fn DllCanUnloadNow() -> HRESULT {
 }
 
 /// Registers the class (`regsvr32`): `HKLM\Software\Classes\CLSID\{…}`,
-/// its `InprocServer32` this DLL, free-threaded or not (`Both`).
+/// its `InprocServer32` this DLL, free-threaded or not (`Both`). The
+/// installer (`koala-msi`) writes the same keys, from its Registry table.
 #[unsafe(no_mangle)]
 extern "system" fn DllRegisterServer() -> HRESULT {
     match register() {
@@ -186,7 +187,7 @@ fn register() -> Result<(), String> {
     }
     let path = String::from_utf16_lossy(&path[..length]);
     let class = class_key();
-    set(&class, None, "Koala's virtual camera")?;
+    set(&class, None, koala_vcam::CLASS_NAME)?;
     let server = format!(r"{class}\InprocServer32");
     set(&server, None, &path)?;
     set(&server, Some("ThreadingModel"), "Both")

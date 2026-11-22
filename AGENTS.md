@@ -28,6 +28,11 @@ so that they let go of the old copy (`docs/virtual-camera.md`).
 **Why:** a trial run against the old copy tests nothing that changed, and
 says so nowhere.
 
+Koala's package (`koala-msi`) registers the same class, for its copy in
+`C:\Program Files\Koala`: whichever registered last is the one the service
+loads. `tools/vcam.ps1 -Uninstall` removes the class's keys, an installed
+package's too; repairing the package puts them back.
+
 ## Keep the diagnostics anonymous, and `PRIVACY.md` true
 
 What Koala sends to Sentry (`crates/koala/src/diagnostics.rs`, and the
