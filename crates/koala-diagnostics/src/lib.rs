@@ -28,11 +28,20 @@ pub const TAGGED: bool = option_env!("KOALA_TAGGED").is_some();
 /// (`build.rs`).
 pub const TRIAL: bool = option_env!("KOALA_DIAGNOSTICS_TRIAL").is_some();
 
+/// Koala's version, as its releases are named and tagged: a date,
+/// `2026.11.22`, or a later release of the same day, `2026.11.22_1`
+/// (Parker, 2026-11-22). Cargo can't carry the `_`, so Cargo.toml has the
+/// day's number as build metadata, `2026.11.22+1`.
+pub fn version() -> String {
+    VERSION.replacen('+', "_", 1)
+}
+
 /// `koala@<version>`, with `+<commit>` for any build but a tagged one.
 pub fn release() -> String {
+    let version = version();
     match COMMIT {
-        Some(commit) if !TAGGED => format!("koala@{VERSION}+{commit}"),
-        _ => format!("koala@{VERSION}"),
+        Some(commit) if !TAGGED => format!("koala@{version}+{commit}"),
+        _ => format!("koala@{version}"),
     }
 }
 
@@ -298,6 +307,14 @@ mod tests {
         for off in [None, Some(""), Some("0"), Some("false"), Some("FALSE"), Some("  ")] {
             assert!(!do_not_track(off), "{off:?}");
         }
+    }
+
+    /// Cargo's `+1` is the release's `_1`; a date alone is itself.
+    #[test]
+    fn a_later_release_of_the_day_is_named_with_an_underscore() {
+        assert!(!version().contains('+'), "{}", version());
+        assert_eq!("2026.11.22+1".replacen('+', "_", 1), "2026.11.22_1");
+        assert_eq!(version().replacen('_', "+", 1), VERSION);
     }
 
     #[test]

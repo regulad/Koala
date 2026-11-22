@@ -37,7 +37,7 @@ impl Component for AboutWindow {
         context.window_title("About Koala");
         context.window_visuals(WindowVisuals::new().client_size(640.0, 720.0).backdrop(WindowBackdrop::Mica));
         let author = env!("CARGO_PKG_AUTHORS").split('<').next().unwrap_or_default().trim();
-        let mut version = format!("Version {}", env!("CARGO_PKG_VERSION"));
+        let mut version = format!("Version {}", koala_diagnostics::version());
         if let Some(warlock) = &input.warlock {
             version.push_str(&format!(" · Warlock {warlock}"));
         }

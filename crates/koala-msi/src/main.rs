@@ -441,9 +441,21 @@ fn tables(
     all
 }
 
-/// Koala's version: the workspace's, which this builder shares with every
-/// other crate, a date, as `2026.11.22` (Cargo.toml; Parker, 2026-11-22).
-const VERSION: &str = env!("CARGO_PKG_VERSION");
+/// Koala's version, as its releases are named: a date, `2026.11.22`, or a
+/// later release of the day, `2026.11.22_1` (`koala_diagnostics::version`,
+/// from Cargo.toml's `2026.11.22+1`).
+fn koala_version() -> String {
+    koala_diagnostics::version()
+}
+
+/// winget's version for one of Koala's: a later release of the day as a
+/// fourth number, `2026.11.22.1`. winget takes `22_1` for 22 with a suffix,
+/// which it ranks below 22 itself, as a pre-release (its `Version::Part`),
+/// so `2026.11.22_1` would come before `2026.11.22`; a fourth part of 1
+/// comes after.
+fn winget_version(version: &str) -> String {
+    version.replacen('_', ".", 1)
+}
 
 /// The ProductVersion Windows Installer takes for a version of Koala's: a
 /// date, year.month.day, or a later package of the same day, `_` and its
@@ -560,9 +572,11 @@ fn build(root: &Path, out: &Path, version: &str) -> Result<()> {
 fn winget(root: &Path, msi: &Path, url: &str, out: Option<PathBuf>) -> Result<()> {
     let p = package_properties(msi)?;
     let get = |k: &str| p.get(k).map(String::as_str).ok_or_else(|| format!("{}: no {k} property", msi.display()));
-    // Koala's version, the date, which winget carries; winget knows the
-    // installed product by its ProductVersion.
+    // Koala's version, the date, which winget carries as its own
+    // (`winget_version`); winget knows the installed product by its
+    // ProductVersion.
     let version = get(VERSION_PROPERTY)?;
+    let winget = winget_version(version);
     let runtime = VcRuntime { dlls: &RUNTIME_DLLS, min: get(RUNTIME_MIN_PROPERTY)?.to_string() };
     let dependencies = [
         runtime.dependency(),
@@ -584,7 +598,7 @@ fn winget(root: &Path, msi: &Path, url: &str, out: Option<PathBuf>) -> Result<()
              the programs link to.",
         ),
         dependencies: &dependencies,
-        package_version: Some(version),
+        package_version: Some(&winget),
     };
     let manifests = winget::manifests(&manifest, msi, &p, url)?;
     let dir = out.unwrap_or_else(|| root.join("target").join("msi").join("winget").join(version));
@@ -619,7 +633,7 @@ fn main() -> Result<()> {
         let url = url.ok_or("--installer-url is needed: where winget will download the package from")?;
         return winget(&root, &msi, &url, out);
     }
-    let (mut out, mut no_build, mut version) = (None, false, VERSION.to_string());
+    let (mut out, mut no_build, mut version) = (None, false, koala_version());
     while let Some(a) = args.next() {
         match a.as_str() {
             "--out" => out = Some(PathBuf::from(args.next().ok_or("--out needs a path")?)),
@@ -664,7 +678,8 @@ mod tests {
         assert_eq!(product_version_of("2026.11.22").unwrap(), "26.11.2200");
         assert_eq!(product_version_of("2026.11.22_1").unwrap(), "26.11.2201");
         assert_eq!(product_version_of("2027.1.5").unwrap(), "27.1.500");
-        assert!(product_version_of(VERSION).is_ok(), "Koala's own version, {VERSION}, is a date");
+        let own = koala_version();
+        assert!(product_version_of(&own).is_ok(), "Koala's own version, {own}, is a date");
         for bad in [
             "0.0.0",
             "2026.13.1",
@@ -770,6 +785,14 @@ mod tests {
         for name in ["Koala", "Tray", "Camera", "avcodec_63.dll", "avutil_61.dll"] {
             assert!(components.contains(&name), "no {name}");
         }
+    }
+
+    /// winget's versions: a later release of the day as a fourth number,
+    /// which winget ranks after the day's first; a date alone as it is.
+    #[test]
+    fn winget_ranks_a_later_release_of_the_day_after_the_first() {
+        assert_eq!(winget_version("2026.11.22"), "2026.11.22");
+        assert_eq!(winget_version("2026.11.22_1"), "2026.11.22.1");
     }
 
     /// The old version is removed once the new one is in, between

@@ -8,6 +8,8 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+# Koala's version, as its releases are named (`version`).
+koala-diagnostics.workspace = true
 # The camera's COM class, which the package registers.
 koala-vcam.workspace = true
 # Names the FFmpeg DLLs' components (`component_guid`).

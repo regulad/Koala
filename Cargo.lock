@@ -1156,7 +1156,7 @@ dependencies = [
 
 [[package]]
 name = "koala"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "apple-opack",
  "ffmpeg-next",
@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "koala-capture"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "aes",
  "apple-opack",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "koala-diagnostics"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "regex-lite",
  "sentry",
@@ -1208,8 +1208,9 @@ dependencies = [
 
 [[package]]
 name = "koala-msi"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
+ "koala-diagnostics",
  "koala-vcam",
  "sha2",
  "warlock-msi-kit",
@@ -1217,7 +1218,7 @@ dependencies = [
 
 [[package]]
 name = "koala-pairing"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "chacha20poly1305",
  "ed25519-dalek",
@@ -1231,7 +1232,7 @@ dependencies = [
 
 [[package]]
 name = "koala-rapport"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "apple-opack",
  "chacha20poly1305",
@@ -1242,7 +1243,7 @@ dependencies = [
 
 [[package]]
 name = "koala-vcam"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "windows",
  "windows-core 0.62.2",
@@ -1250,7 +1251,7 @@ dependencies = [
 
 [[package]]
 name = "koala-vcam-source"
-version = "2026.11.22"
+version = "2026.11.22+1"
 dependencies = [
  "koala-diagnostics",
  "koala-vcam",

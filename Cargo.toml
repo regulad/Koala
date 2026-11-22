@@ -7,9 +7,12 @@ exclude = ["third_party/warlock"]
 [workspace.package]
 # Koala's one version, which every crate carries: the release's date,
 # year.month.day, as 2026.11.22, and tagged v2026.11.22 (Parker,
-# 2026-11-22). Its package records it as 26.11.22, which Windows Installer
+# 2026-11-22). A later release of the same day is 2026.11.22_1, which Cargo
+# can't spell: here it's 2026.11.22+1, the day's number as build metadata,
+# which the crates' requirements below still match (koala-diagnostics'
+# version()). Its package records it as 26.11.2201, which Windows Installer
 # takes (koala-msi).
-version = "2026.11.22"
+version = "2026.11.22+1"
 edition = "2024"
 license = "AGPL-3.0-or-later"
 authors = ["Parker Wahle <regulad@regulad.xyz>"]
