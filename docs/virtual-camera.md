@@ -32,7 +32,10 @@ iPhone ──HEVC over RTP, LLW──▶ Koala (decode.rs: HEVC to NV12)
 - **The feed** (`crates/koala/src/vcam.rs`): each session's camera stream,
   decoded on a thread of its own from its one keyframe, whether or not an
   app is watching, and written to the shared memory once an app has started
-  the camera.
+  the camera. While no picture comes (the iPhone paused, trials 39–41), it
+  tells the camera every half second that it's still there, so the camera
+  holds the last picture until the session ends; an app that opens the
+  camera meanwhile gets that picture.
 - **The camera** (`crates/koala-vcam`, `VirtualCamera`): made with
   `MFCreateVirtualCamera` for the current user, for as long as Koala runs
   (a session camera). Koala gives it the user's SID as an attribute.
@@ -52,7 +55,7 @@ iPhone ──HEVC over RTP, LLW──▶ Koala (decode.rs: HEVC to NV12)
 - **The media source** (`crates/koala-vcam-source`): a COM DLL the camera
   service loads. One stream, NV12 1920×1080 at 30 a second, BT.709 in
   limited range. It answers the service's requests with the latest picture,
-  and with black once Koala has sent none for 2 s, in samples of its own in
+  and with black once Koala has gone quiet for 2 s, in samples of its own in
   memory: it touches no GPU. It logs what it does to `koala-vcam.log` in the
   service's temporary directory
   (`C:\Windows\ServiceProfiles\LocalService\AppData\Local\Temp`, which takes

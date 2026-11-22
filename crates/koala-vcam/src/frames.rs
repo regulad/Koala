@@ -254,6 +254,13 @@ impl Writer {
         Ok(Some(Self { shared }))
     }
 
+    /// Says the writer is still here, without a picture: the source goes on
+    /// showing its last, where after [`STALE_MS`] it would show black (as
+    /// while the iPhone's camera is paused).
+    pub fn keep_alive(&mut self) {
+        self.shared.header().written_at.store(unsafe { GetTickCount64() }, Ordering::Release);
+    }
+
     /// Writes one picture, NV12 `width` by `height`: as it is if it's the
     /// camera's size, else centered on black, cut to fit.
     pub fn write(&mut self, width: u32, height: u32, nv12: &[u8]) {
@@ -384,6 +391,13 @@ mod tests {
             writer.write(WIDTH, HEIGHT, &picture);
         }
         assert_eq!(reader.copy_latest(&mut out), Some(5), "the latest, past the slots' wrap");
+        // Its last picture long ago, then kept alive without a new one: the
+        // source keeps showing the last.
+        writer.shared.header().written_at.store(1, Ordering::Release);
+        assert!(!reader.writer_present(), "stale");
+        writer.keep_alive();
+        assert!(reader.writer_present(), "kept alive");
+        assert_eq!(reader.copy_latest(&mut out), None, "with nothing new to copy");
     }
 
     #[test]

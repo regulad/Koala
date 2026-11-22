@@ -10,9 +10,13 @@
 //! stream's first keyframe, which is its only one (trial 23): pictures are
 //! decoded from it whether or not an app is watching, so one that opens the
 //! camera later has them at once.
+//!
+//! While the stream lives and no picture comes (the iPhone paused), the
+//! camera holds the last one ([`HOLD`]); it goes black when the session
+//! ends, and with it the feed.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{SyncSender, TrySendError, sync_channel};
+use std::sync::mpsc::{RecvTimeoutError, SyncSender, TrySendError, sync_channel};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -29,6 +33,11 @@ pub static ON: AtomicBool = AtomicBool::new(false);
 /// there (no app has started the camera yet).
 const LOOK: Duration = Duration::from_millis(500);
 
+/// How often the feed tells the camera it's still there while no picture
+/// comes, well within the source's `koala_vcam::frames::STALE_MS`, after
+/// which it would show black: so the camera holds the last picture.
+const HOLD: Duration = Duration::from_millis(500);
+
 /// One stream's pictures, decoded and written to the camera.
 pub struct Feed {
     software: bool,
@@ -38,6 +47,8 @@ pub struct Feed {
     names: Names,
     writer: Option<Writer>,
     looked: Option<Instant>,
+    /// The latest picture, which the camera holds while no other comes.
+    last: Option<Picture>,
     pub pictures: u64,
     errors: u64,
 }
@@ -53,6 +64,7 @@ impl Feed {
             names: Names::for_user(&sid),
             writer: None,
             looked: None,
+            last: None,
             pictures: 0,
             errors: 0,
         })
@@ -86,6 +98,7 @@ impl Feed {
             Ok(pictures) => {
                 for picture in pictures {
                     self.write(&picture);
+                    self.last = Some(picture);
                 }
             }
             Err(e) => {
@@ -118,19 +131,37 @@ impl Feed {
 
     fn write(&mut self, picture: &Picture) {
         self.pictures += 1;
-        if self.writer.is_none() && self.looked.is_none_or(|t| t.elapsed() >= LOOK) {
-            self.looked = Some(Instant::now());
-            match Writer::open(&self.names) {
-                Ok(Some(writer)) => {
-                    println!("camera: an app has the camera; its pictures go to it");
-                    self.writer = Some(writer);
-                }
-                Ok(None) => {}
-                Err(e) => println!("camera: the camera's shared memory: {e}"),
-            }
-        }
+        self.open();
         if let Some(writer) = &mut self.writer {
             writer.write(picture.width, picture.height, &picture.nv12);
+        }
+    }
+
+    /// No picture for [`HOLD`]: the camera keeps the last. An app that
+    /// opens the camera meanwhile gets it too.
+    fn hold(&mut self) {
+        let had = self.writer.is_some();
+        self.open();
+        match (&mut self.writer, &self.last) {
+            (Some(writer), Some(last)) if !had => writer.write(last.width, last.height, &last.nv12),
+            (Some(writer), _) => writer.keep_alive(),
+            (None, _) => {}
+        }
+    }
+
+    /// The camera's shared memory, once an app has started the camera.
+    fn open(&mut self) {
+        if self.writer.is_some() || self.looked.is_some_and(|t| t.elapsed() < LOOK) {
+            return;
+        }
+        self.looked = Some(Instant::now());
+        match Writer::open(&self.names) {
+            Ok(Some(writer)) => {
+                println!("camera: an app has the camera; its pictures go to it");
+                self.writer = Some(writer);
+            }
+            Ok(None) => {}
+            Err(e) => println!("camera: the camera's shared memory: {e}"),
         }
     }
 }
@@ -158,8 +189,12 @@ impl FeedThread {
                     Ok(feed) => feed,
                     Err(e) => return println!("camera: no feed for the virtual camera: {e}"),
                 };
-                for unit in received {
-                    feed.unit(&unit);
+                loop {
+                    match received.recv_timeout(HOLD) {
+                        Ok(unit) => feed.unit(&unit),
+                        Err(RecvTimeoutError::Timeout) => feed.hold(),
+                        Err(RecvTimeoutError::Disconnected) => break,
+                    }
                 }
                 println!("camera: {} pictures to the virtual camera", feed.pictures);
             })
