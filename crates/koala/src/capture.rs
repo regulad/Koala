@@ -425,6 +425,7 @@ async fn rapport_stream(
         }
         xid = starts.len() as u64;
     }
+    let mut clock_answered = false;
     loop {
         let value = match connection.receive_opack().await {
             Ok((FrameType::E_OPACK, value)) => value,
@@ -443,7 +444,31 @@ async fn rapport_stream(
                 if let Some(why) = ending_event(&message.content) {
                     let _ = ending.send(why);
                 }
-                continue;
+                // The microphones' clock (selector 4, every 60 ms), which the
+                // iPhone sends until the host answers that it has it
+                // (`docs/guest-pairing.md`, "Both at once"). With
+                // `KOALA_CLOCK_COMPLETE=1`, Koala answers the first, for a
+                // trial: the iPhone said "Connecting" all session long
+                // without an answer (trial 35). Given one, it stopped its
+                // clock at once (trial 38); whether it then says it's
+                // connected isn't yet known.
+                let clock =
+                    message.content.get(SELECTOR).and_then(Value::as_u64) == Some(command::SYNCHRONIZE_AUDIO_CLOCK);
+                let answering = std::env::var_os("KOALA_CLOCK_COMPLETE").is_some_and(|v| v == "1");
+                if !clock || clock_answered || !answering {
+                    continue;
+                }
+                clock_answered = true;
+                println!("capture: the microphones' clock answered: selector 5, []");
+                xid += 1;
+                Message::event(
+                    STREAM_EVENT,
+                    xid,
+                    dict(vec![
+                        (SELECTOR, Value::int(command::SYNCHRONIZE_AUDIO_CLOCK_COMPLETE)),
+                        (ARGS, Value::Array(vec![])),
+                    ]),
+                )
             }
             _ => continue,
         };
