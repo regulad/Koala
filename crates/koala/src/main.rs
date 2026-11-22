@@ -1,7 +1,7 @@
 //! `koala`, the console tool for trials (PLAN.md):
 //!
 //! ```text
-//! koala guest [SECONDS] [--session SECONDS] [--mic-wav PATH] [--camera PATH] [--vcam] [--software-decode]
+//! koala guest [SECONDS] [--session SECONDS] [--mic-wav PATH] [--usb-mics] [--camera PATH] [--vcam] [--software-decode]
 //! koala vcam [--replay PATH.mkv] [--software-decode]
 //! ```
 //!
@@ -11,7 +11,8 @@
 //!   iPhone that connects, printing every frame. It needs Warlock running,
 //!   and Administrator rights or membership of `warlock-users`. With
 //!   `--vcam`, it makes the virtual camera for the run and gives it the
-//!   iPhone's camera (`docs/virtual-camera.md`).
+//!   iPhone's camera (`docs/virtual-camera.md`); with `--usb-mics`, it gives
+//!   Windows the iPhone's microphones (`koala::usb_mics`).
 //! - `vcam` makes the virtual camera, and with `--replay` plays a recording
 //!   (`--camera`'s) into it, over and over, until Ctrl+C: the camera without
 //!   an iPhone.
@@ -22,13 +23,13 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use koala::{camera, diagnostics, guest, mic, settings, vcam};
+use koala::{camera, diagnostics, guest, mic, settings, usb_mics, vcam};
 use koala_vcam::VirtualCamera;
 
 /// How long the trial follows a capture session, unless `--session` says.
 const SESSION_TIME: Duration = Duration::from_secs(120);
 const USAGE: &str = "usage: koala guest [SECONDS to wait, default 600] [--session SECONDS, default 120] \
-                     [--mic-wav PATH] [--camera PATH.mkv] [--vcam] [--software-decode]\n       \
+                     [--mic-wav PATH] [--usb-mics] [--camera PATH.mkv] [--vcam] [--software-decode]\n       \
                      koala vcam [--replay PATH.mkv] [--software-decode]";
 
 fn usage() -> ! {
@@ -90,6 +91,11 @@ async fn main() {
     }
     let replay = take_path(&mut args, "--replay");
     let with_vcam = take_flag(&mut args, "--vcam");
+    // `--usb-mics`: give Windows the iPhone's microphones, as the tray does
+    // (`koala::usb_mics`).
+    if take_flag(&mut args, "--usb-mics") {
+        usb_mics::ON.store(true, Ordering::Relaxed);
+    }
     // `--session SECONDS`: how long to follow the capture session.
     let session = match take_path(&mut args, "--session").map(|s| s.to_string_lossy().parse::<u64>()) {
         None => SESSION_TIME,

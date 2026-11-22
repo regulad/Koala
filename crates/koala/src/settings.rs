@@ -1,5 +1,8 @@
 //! Koala's settings, each the user's own, under
 //! `HKEY_CURRENT_USER\Software\Koala`:
+//! - `StreamMicrophones` (a DWORD, 0 for off): give Windows the iPhone's
+//!   microphones while it's connected (`crate::usb_mics`). On unless set
+//!   off. The tray's Options menu sets it.
 //! - `StreamCamera` (a DWORD, 0 for off): ask the iPhone for its camera in
 //!   each session, and give Windows Koala's camera while it's connected
 //!   (`crate::vcam`). On unless set off. The tray's Options menu sets it.
@@ -25,6 +28,9 @@ pub struct Switch {
     /// What it is where it's never been set.
     default: bool,
 }
+
+/// Whether to give Windows the iPhone's microphones.
+pub const STREAM_MICROPHONES: Switch = Switch { key: KEY, name: "StreamMicrophones", default: true };
 
 /// Whether to stream the iPhone's camera to Koala's camera.
 pub const STREAM_CAMERA: Switch = Switch { key: KEY, name: "StreamCamera", default: true };

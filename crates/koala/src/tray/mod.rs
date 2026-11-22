@@ -11,13 +11,17 @@
 //!   "Connecting to <iPhone>…" or "Connected to <iPhone>";
 //! - Connect, greyed out unless disconnected;
 //! - a separator, then Options (a submenu, each item on or off: "Start on
-//!   logon", [`startup`]; "Stream camera" and "Force software decoding",
-//!   [`crate::settings`]), About, which opens About Koala ([`about`]), and
-//!   Quit.
+//!   logon", [`startup`]; "Stream microphones", "Stream camera" and "Force
+//!   software decoding", [`crate::settings`]), About, which opens About Koala
+//!   ([`about`]), and Quit.
 //!
 //! Reactor's menu items are plain text for now, so the status row is the
 //! menu's own size and About has no icon (Parker's choice, 2026-11-20:
 //! Reactor, with its limits).
+//!
+//! While an iPhone's audio comes, and "Stream microphones" is on (its
+//! default), Windows has its microphones, each named after it, "Parker’s
+//! iPhone: Back" ([`crate::usb_mics`]).
 //!
 //! While an iPhone is connected, and "Stream camera" is on (its default),
 //! Windows has Koala's camera ([`crate::vcam`]; `docs/virtual-camera.md`),
@@ -96,6 +100,13 @@ fn camera(name: &str) -> Option<koala_vcam::VirtualCamera> {
     }
 }
 
+/// Whether sessions give Windows the iPhone's microphones: while "Stream
+/// microphones" is on. They come and go with the session's microphone
+/// stream ([`crate::usb_mics`]).
+fn microphones_wanted(on: bool) {
+    crate::usb_mics::ON.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Whether sessions ask for the iPhone's camera: while "Stream camera" is
 /// on. The camera is made as the iPhone pairs, while the session sets out:
 /// the session goes by this, not by whether the camera is there yet.
@@ -126,6 +137,8 @@ struct Tray {
     /// Whether the camera is decoded by FFmpeg, whatever Windows has
     /// ([`crate::settings`]).
     software_decoding: bool,
+    /// Whether Windows gets the iPhone's microphones ([`crate::settings`]).
+    stream_microphones: bool,
     /// Whether the iPhone's camera is streamed to Koala's camera
     /// ([`crate::settings`]); the camera, while an iPhone is connected; and
     /// whether this connection has tried to make it (once each).
@@ -167,6 +180,8 @@ impl Application for Tray {
         }
         let stream_camera = settings::STREAM_CAMERA.on();
         camera_wanted(stream_camera);
+        let stream_microphones = settings::STREAM_MICROPHONES.on();
+        microphones_wanted(stream_microphones);
         Self {
             view: View::default(),
             commands,
@@ -174,6 +189,7 @@ impl Application for Tray {
             _runtime: runtime,
             start_on_logon,
             software_decoding: settings::FORCE_SOFTWARE_DECODING.on(),
+            stream_microphones,
             stream_camera,
             camera: None,
             camera_tried: false,
@@ -218,6 +234,14 @@ impl Application for Tray {
                         println!("koala-tray: force software decoding: {e}");
                     }
                     self.software_decoding = settings::FORCE_SOFTWARE_DECODING.on();
+                }
+                // Taken up by the next session's microphones.
+                Some("microphones") => {
+                    if let Err(e) = settings::STREAM_MICROPHONES.set(!self.stream_microphones) {
+                        println!("koala-tray: stream microphones: {e}");
+                    }
+                    self.stream_microphones = settings::STREAM_MICROPHONES.on();
+                    microphones_wanted(self.stream_microphones);
                 }
                 // Off, the camera goes now; on, it comes with the next
                 // connection, whose session asks for the iPhone's camera.
@@ -272,6 +296,7 @@ impl Application for Tray {
                     "Options",
                     [
                         MenuItem::item("logon", checked(self.start_on_logon, "Start on logon")),
+                        MenuItem::item("microphones", checked(self.stream_microphones, "Stream microphones")),
                         MenuItem::item("camera", checked(self.stream_camera, "Stream camera")),
                         MenuItem::item("software", checked(self.software_decoding, "Force software decoding")),
                     ],

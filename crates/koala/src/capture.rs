@@ -81,6 +81,14 @@ pub async fn run(
     report: Report,
 ) {
     let port = iphone.port();
+    // Its name, as its owner set it, from its pairing: what Windows' devices
+    // are named after, and never the diagnostics'.
+    let iphone_name = peer
+        .info
+        .as_deref()
+        .and_then(|info| apple_opack::unpack(info).ok())
+        .and_then(|(value, _)| value.get("name").and_then(Value::as_str).map(str::to_owned))
+        .unwrap_or_else(|| koala_vcam::DEFAULT_NAME.into());
     // The session, timed for the diagnostics: its kind, how it went and how
     // long it lasted, and nothing about the iPhone but its model.
     let kind = if camera::wanted() { "microphone+camera" } else { "microphone" };
@@ -141,6 +149,7 @@ pub async fn run(
         local,
         ssrcs,
         model: Model::default(),
+        iphone_name,
         configurations,
         started: false,
         activated: BTreeSet::new(),
@@ -186,6 +195,8 @@ struct Session {
     ssrcs: Ssrcs,
     /// The iPhone's model, from its AVC offer on Control.
     model: Model,
+    /// Its name, from its pairing: the microphones' devices are named after it.
+    iphone_name: String,
     /// The entities asked for, each with its own configuration: the
     /// microphones first (the one started early), then the camera.
     configurations: Vec<Configuration>,
@@ -317,7 +328,8 @@ impl Session {
                 let (stop_tx, stop_rx) = oneshot::channel();
                 self.udp_stop.push(stop_tx);
                 let (model, report) = (self.model.clone(), self.report.clone());
-                self.streams.spawn(udp_stream(stream.clone(), socket, keys, ssrc, model, report, stop_rx));
+                let iphone = self.iphone_name.clone();
+                self.streams.spawn(udp_stream(stream.clone(), socket, keys, ssrc, (model, iphone), report, stop_rx));
                 self.reply(message, udp_stream_answer(&address, self.local.mac, &key, port)).await?;
                 self.activated(&stream).await?;
             }
@@ -482,11 +494,11 @@ enum Media {
 }
 
 impl Media {
-    fn for_stream(stream: &str, model: Model) -> Self {
+    fn for_stream(stream: &str, model: Model, iphone: &str) -> Self {
         if stream == name::DEFAULT_VIDEO {
             Self::Camera(Box::new(Recording::open()))
         } else {
-            Self::Microphone(Microphone::new(Microphone::output(), model))
+            Self::Microphone(Microphone::new(Microphone::output(iphone), model))
         }
     }
 
@@ -536,7 +548,7 @@ async fn udp_stream(
     socket: UdpSocket,
     keys: srtp::Context,
     ssrc: u32,
-    model: Model,
+    (model, iphone): (Model, String),
     report: Report,
     mut stop: oneshot::Receiver<()>,
 ) {
@@ -547,7 +559,7 @@ async fn udp_stream(
     let mut stats: Option<ReceiverStats> = None;
     // Each SSRC's sequence numbers roll over on their own.
     let mut rollovers: BTreeMap<u32, Rollover> = BTreeMap::new();
-    let mut media = Media::for_stream(&stream, model);
+    let mut media = Media::for_stream(&stream, model, &iphone);
     let mut tick = tokio::time::interval(RTCP_INTERVAL);
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     loop {

@@ -68,7 +68,14 @@ Everything else is wasted if the iPhone won't accept a host that isn't a real Ap
 - **`avc-media`**: the AVConference negotiation blob, RTP/SRTP ([`rtc-srtp`/`rtc-rtp`](https://github.com/webrtc-rs/rtc), MIT/Apache, which take keys directly), Opus (`opus` 0.4.0 on libopus, BSD; pin `opusic-sys` 0.7.6). The Mac asks for AVC codec 16 (inferred: Opus 48 kHz), 4 channels, in "call" mode. If AAC-ELD turns up, an LGPL FFmpeg build (FDK-AAC is GPL-incompatible). A gPTP/TimeSync responder only if captures show it's needed.
 - **Audio out:** a USB/IP server in Koala, emulating a UAC2 device with one mono input per microphone, named from `koala-capture`'s mic map. Its asynchronous IN endpoints let the device follow the iPhone's clock. Prior art: [network-audio/usbip-audio](https://github.com/network-audio/usbip-audio) (MIT). *Started 2026-11-20:*
   - the mic map (`crates/koala-capture/data/mic-maps.json`, from every iOS 27 iPhone's device tree by `tools/mic_maps.py`);
-  - one output per microphone (`crates/koala/src/mic.rs`), which are WAV files for now.
+  - one output per microphone (`crates/koala/src/mic.rs`), to Windows or to a WAV, or both;
+  - the microphones in Windows (`crates/koala/src/usb_mics.rs`, 2026-11-21). On usbip-audio (MIT, a git dependency at its 2026-11-07 commit), a device per microphone, one channel at 48 kHz.
+    - They're named "Microphone (Parker’s iPhone: Back)" (Parker, 2026-11-21): Windows takes a microphone's name from its device's product string, not its terminal's.
+    - They're attached as the iPhone's audio starts, unelevated, and detached when it ends.
+    - The clock follows the iPhone's, steered by the samples waiting.
+    - The tray's "Stream microphones" (on by default) and `koala guest --usb-mics` turn them on.
+    - Trial 34: four microphones, all of which Windows recorded from, attached and detached with the session.
+    - The ids: pid.codes' 1209:4B4F, asked for in pidcodes/pidcodes.github.com#1398 (Parker, 2026-11-21). If it's refused, Koala changes it.
   - **Rust prior art (surveyed 2026-11-21).** No published crate gives a Windows UAC2 capture device over USB/IP.
     - References: usbip-audio (UAC2, high speed, iso pacing; its CI records through usbip-win2 0.9.8.1) and [Sebas](https://github.com/sebas-dot-zip/sebas-virtual-usb-device) (MIT OR Apache-2.0; a UAC1 microphone over usbip-win2, whose comments record its quirks).
     - Worth a spike: [vusb](https://github.com/oxrok/vusb) (MIT OR Apache-2.0), the only published crate with isochronous USB/IP and UVC/UAC examples, but young and untried on Windows.
@@ -114,6 +121,7 @@ Milestones (exit criteria):
   - The tool that made the difference was the iPhone's own log over USB: pymobiledevice3 (GPL-3.0, a tool only) in a venv, `syslog live -ei 'rapportd|ContinuityCapture|…'`.
 - **K3:** the iPhone brought onto AWDL (`_rdNeedsAWDL`), Koala connected to its RDLink server and pair-verified, and a mic-only `com.apple.continuitycapture` session negotiated. Needs more RE first: the control messages, the NSKeyedArchiver configuration, the stream descriptors and the AVConference/SRTP keying.
 - **K4:** the iPhone's microphones appear in Windows as microphones, one each, with stable latency and drift. The repository is published around here.
+  - *Mostly done 2026-11-21* (trial 34): one each, named after the iPhone, recorded from by Windows. Latency and drift over a long session are yet to be measured.
 
 ## Pipeline (2026-11-20, from Warlock's)
 

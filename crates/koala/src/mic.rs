@@ -5,10 +5,9 @@
 //! Each channel is one of the iPhone's microphones
 //! (`koala_capture::mic_map`), and each goes out as a microphone of its own:
 //! a session with N channels opens N single-channel sinks, once its first
-//! packet shows how many there are, named from the iPhone's model. Which
-//! driver turns a sink into a Windows microphone is still being built
-//! (`PLAN.md`); for now a sink can record its microphone to a WAV
-//! (`koala guest --mic-wav PATH`).
+//! packet shows how many there are, named from the iPhone's model. A sink
+//! gives its microphone to Windows ([`crate::usb_mics`]), records it to a
+//! WAV (`koala guest --mic-wav PATH`), or both.
 
 use std::fs::File;
 use std::io::{BufWriter, Seek, SeekFrom, Write};
@@ -52,6 +51,31 @@ impl Sink for Discard {
 impl Output for Discard {
     fn open(&mut self, layout: &Layout) -> Vec<Box<dyn Sink>> {
         layout.mics.iter().map(|_| Box::new(Discard) as Box<dyn Sink>).collect()
+    }
+}
+
+/// Several outputs at once: each microphone's blocks go to each.
+pub struct Tee(pub Vec<Box<dyn Output>>);
+
+struct TeeSink(Vec<Box<dyn Sink>>);
+
+impl Sink for TeeSink {
+    fn write(&mut self, block: &Block) {
+        for sink in &mut self.0 {
+            sink.write(block);
+        }
+    }
+}
+
+impl Output for Tee {
+    fn open(&mut self, layout: &Layout) -> Vec<Box<dyn Sink>> {
+        let mut each: Vec<std::vec::IntoIter<Box<dyn Sink>>> =
+            self.0.iter_mut().map(|o| o.open(layout).into_iter()).collect();
+        layout
+            .mics
+            .iter()
+            .map(|_| Box::new(TeeSink(each.iter_mut().filter_map(Iterator::next).collect())) as Box<dyn Sink>)
+            .collect()
     }
 }
 
@@ -164,11 +188,21 @@ impl Microphone {
         Self { output, model, open: None, last_seq: None, layout: None, decoded: 0, concealed: 0, errors: 0 }
     }
 
-    /// The output `--mic-wav` asks for, or [`Discard`].
-    pub fn output() -> Box<dyn Output> {
-        match RECORD.get() {
-            Some(path) => Box::new(Recordings { path: path.clone() }),
-            None => Box::new(Discard),
+    /// The session's outputs: Windows' microphones, named after `iphone`, if
+    /// they're on ([`crate::usb_mics::ON`]); the WAVs `--mic-wav` asks for;
+    /// or, with neither, [`Discard`].
+    pub fn output(iphone: &str) -> Box<dyn Output> {
+        let mut outputs: Vec<Box<dyn Output>> = Vec::new();
+        if crate::usb_mics::ON.load(std::sync::atomic::Ordering::Relaxed) {
+            outputs.push(Box::new(crate::usb_mics::UsbMicrophones { iphone: iphone.to_owned() }));
+        }
+        if let Some(path) = RECORD.get() {
+            outputs.push(Box::new(Recordings { path: path.clone() }));
+        }
+        match outputs.len() {
+            0 => Box::new(Discard),
+            1 => outputs.remove(0),
+            _ => Box::new(Tee(outputs)),
         }
     }
 

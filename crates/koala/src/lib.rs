@@ -19,6 +19,7 @@ pub mod mic;
 pub mod mkv;
 pub mod settings;
 pub mod tray;
+pub mod usb_mics;
 pub mod vcam;
 
 /// A random (version 4) UUID, as `-[NSUUID UUIDString]` writes one:
