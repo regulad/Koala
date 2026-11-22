@@ -446,16 +446,13 @@ async fn rapport_stream(
                 }
                 // The microphones' clock (selector 4, every 60 ms), which the
                 // iPhone sends until the host answers that it has it
-                // (`docs/guest-pairing.md`, "Both at once"). With
-                // `KOALA_CLOCK_COMPLETE=1`, Koala answers the first, for a
-                // trial: the iPhone said "Connecting" all session long
-                // without an answer (trial 35). Given one, it stopped its
-                // clock at once (trial 38); whether it then says it's
-                // connected isn't yet known.
+                // (`docs/guest-pairing.md`, "Both at once"). Koala answers
+                // the first. Unanswered, the iPhone said "Connecting" all
+                // session long (trial 35); answered, it stopped its clock at
+                // once and said "Connected" (trial 38).
                 let clock =
                     message.content.get(SELECTOR).and_then(Value::as_u64) == Some(command::SYNCHRONIZE_AUDIO_CLOCK);
-                let answering = std::env::var_os("KOALA_CLOCK_COMPLETE").is_some_and(|v| v == "1");
-                if !clock || clock_answered || !answering {
+                if !clock || clock_answered {
                     continue;
                 }
                 clock_answered = true;

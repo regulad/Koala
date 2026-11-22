@@ -859,8 +859,9 @@ what it asks of a host. Addresses are in that framework.
   (`-[CMContinuityCaptureRemoteAudioDevice _dispatchAudioFrame:]`): its
   sample count against its gPTP time and grandmaster, sent until the host
   answers with selector 5 (any array, `[]` will do), which stops it
-  (0x25b1552a4). Nothing ends a session without a 5. Koala doesn't send it:
-  that mapping is what audio and video will be synchronized with.
+  (0x25b1552a4). Nothing ends a session without a 5, but the iPhone's
+  screen says "Connecting" until it comes: Koala answers the first (trials
+  35–38). The mapping is what audio and video will be synchronized with.
 - **gPTP.** The iPhone binds its own TimeSync clock, the host added as a
   unicast peer (`createTimeSyncClockWithPeerAddress:`), and needs nothing
   back: as grandmaster, its clock is valid whatever the host does.
@@ -918,6 +919,35 @@ Each trial asked for 60 s of the microphones and the camera together.
   - The microphones gave four tracks of 56.3 s from 3,070 packets, none in
     error.
 
+## The iPhone's screen, and its Disconnect (2026-11-21, trials 35–38)
+
+From the tray, both streams, the microphones to Windows and the camera to
+the virtual camera.
+
+- **Trial 35: "Connecting", and a Disconnect Koala missed.**
+  - Both streams came up and ran, but the iPhone's screen said
+    "Connecting" all session long.
+  - All the while, the iPhone sent its microphones' clock on Command
+    (selector 4, every 60 ms), and Koala never answered it.
+  - Parker tapped Disconnect at 83 s. The iPhone sent
+    `kCMContinuityCaptureEventUserDisconnect` on Command, for entities 2, 1
+    and 3 within 70 ms, and stopped its media. It left the RemoteDisplay
+    connection open: a minute later it still sent Control messages on it.
+  - Koala followed only that connection, so it went on sending receiver
+    reports, and the tray said "Connected".
+- **Trials 36 and 37: the scan failed twice**, in rapportd's stale-device
+  state (`Skip using NearbyActionV2 as destination device is missing
+  correct status flags`, naming a device other than the session's target).
+  This came right after trial 35's session, which ended with Koala holding
+  its connection and then being killed. Restarting the iPhone cleared it.
+- **Trial 38: "Connected", and a clean end.**
+  - Koala answered the first clock message with selector 5, `[]`
+    (SynchronizeAudioClockComplete). The iPhone stopped its clock at once,
+    and its screen said "Connected".
+  - Koala ended the session on the iPhone's first `UserDisconnect`, at 20 s.
+    The camera went away, the microphones detached, and the tray said
+    "Disconnected".
+
 ## What Koala needs, from this
 
 - **QR:** `continuitycamera://connect?_pubID=<UUID>&_pinC=<UUID>&_pi=<UUID>&model=AppleTV14,1&_rdsr=1`.
@@ -943,7 +973,10 @@ Each trial asked for 60 s of the microphones and the camera together.
   6. send an SRTCP receiver report every second (AES_256_CM_HMAC_SHA1_80,
      the same key) to the iPhone's microphone address, which is on its
      `llw0`, from a socket bound to Warlock's link-local. Windows otherwise
-     picks a ULA of another adapter's.
+     picks a ULA of another adapter's;
+  7. answer the microphones' first clock message on Command with selector
+     5, and end the session on the iPhone's `UserDisconnect` or
+     `ConnectionDisconnect` there (trials 35–38).
 
 ## Open
 
