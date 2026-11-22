@@ -1162,13 +1162,13 @@ dependencies = [
  "ffmpeg-next",
  "getrandom",
  "koala-capture",
+ "koala-diagnostics",
  "koala-pairing",
  "koala-rapport",
  "koala-vcam",
  "opus",
  "opusic-sys",
  "qrcode",
- "regex-lite",
  "sentry",
  "tokio",
  "usbip-audio",
@@ -1194,6 +1194,15 @@ dependencies = [
  "sha1",
  "thiserror",
  "x25519-dalek",
+]
+
+[[package]]
+name = "koala-diagnostics"
+version = "0.0.0"
+dependencies = [
+ "regex-lite",
+ "sentry",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1233,7 +1242,9 @@ dependencies = [
 name = "koala-vcam-source"
 version = "0.0.0"
 dependencies = [
+ "koala-diagnostics",
  "koala-vcam",
+ "sentry",
  "windows",
  "windows-core 0.62.2",
 ]

@@ -47,8 +47,11 @@ fn a_started_source_answers_a_request_with_koalas_picture() {
     unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.unwrap();
     let sid = frames::current_user_sid().unwrap();
     let activate = crate::activate::create().unwrap();
-    // As Koala sets it on the camera, and the camera service passes it on.
+    // As Koala sets them on the camera, and the camera service passes them
+    // on. (A camera that refused diagnostics would stop them for every test
+    // in this process, `diagnostics`'s own among them.)
     unsafe { activate.SetString(&koala_vcam::USER_SID, &HSTRING::from(&sid)) }.unwrap();
+    unsafe { activate.SetUINT32(&koala_vcam::DIAGNOSTICS_ALLOWED, 1) }.unwrap();
     let source: IMFMediaSourceEx = unsafe { activate.ActivateObject() }.unwrap();
     // What the camera service reads before starting it.
     let attributes = unsafe { source.GetSourceAttributes() }.unwrap();

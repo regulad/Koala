@@ -57,7 +57,7 @@ fn take_flag(args: &mut Vec<String>, flag: &str) -> bool {
 /// can't be.
 fn virtual_camera() -> VirtualCamera {
     let name = koala_vcam::DEFAULT_NAME;
-    match VirtualCamera::start(name) {
+    match VirtualCamera::start(name, crate::diagnostics::allowed()) {
         Ok(camera) => {
             vcam::ON.store(true, Ordering::Relaxed);
             println!("vcam: \"{name}\" is up, for apps to open");

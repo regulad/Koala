@@ -128,10 +128,11 @@ For the shared memory: [DeskCam](https://github.com/sinnafuls/rust-virtual-cam)
 
 ## Open
 
-- **Diagnostics for the source (Parker, 2026-11-21):** it runs in the camera
-  service, not in Koala, so it needs a Sentry project of its own, as each of
-  Warlock's programs has. The service doesn't see the user's environment:
-  `DO_NOT_TRACK` would come in the camera's attributes, as the SID does.
+- **Diagnostics for the source, untried live.** It reports to a Sentry
+  project of its own, `koala-vcam`, as each of Warlock's programs has, its
+  user's say coming in the camera's attributes, as the SID does
+  (`crates/koala-vcam-source/src/diagnostics.rs`; PLAN.md, "Diagnostics").
+  Whether the camera service may reach Sentry from session 0 isn't known.
 - **Formats:** NV12 alone so far. Apps that want others (YUY2, RGB32 for
   some DirectShow ones) are untried; Windows converted to YUY2 for FFmpeg.
 - **Apps:** Windows' Camera works, and FFmpeg's DirectShow input; browsers,

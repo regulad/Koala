@@ -25,6 +25,12 @@ pub const CLSID: GUID = GUID::from_u128(0x08227305_3597_4cca_b439_905a2395c9ef);
 /// alone ([`frames`]).
 pub const USER_SID: GUID = GUID::from_u128(0x0cc9895d_fee0_48d7_939a_b1ccb06b0d3d);
 
+/// The camera's attribute that says its user allows diagnostics: a UINT32,
+/// 1 when Koala's environment has no `DO_NOT_TRACK`, which the camera
+/// service, where the media source runs, can't see. Absent or 0, the
+/// source sends none.
+pub const DIAGNOSTICS_ALLOWED: GUID = GUID::from_u128(0x725640fe_a871_43ec_8506_cb20f0b1e908);
+
 /// The camera's name where there's no iPhone's to give it: apps list a
 /// camera by the name it's made with, and Koala's tray makes it as an
 /// iPhone pairs, named after it, as a Mac does (Parker, 2026-11-21).
@@ -58,11 +64,12 @@ pub struct VirtualCamera {
 }
 
 impl VirtualCamera {
-    /// Makes the camera, called `name`, and starts it. Fails where Windows
-    /// is older than Windows 11 (no `MFCreateVirtualCamera`), where the
-    /// media source isn't registered, or where the user doesn't allow apps
-    /// the camera.
-    pub fn start(name: &str) -> Result<Self, String> {
+    /// Makes the camera, called `name`, and starts it, its source allowed
+    /// diagnostics if `diagnostics` ([`DIAGNOSTICS_ALLOWED`]). Fails where
+    /// Windows is older than Windows 11 (no `MFCreateVirtualCamera`), where
+    /// the media source isn't registered, or where the user doesn't allow
+    /// apps the camera.
+    pub fn start(name: &str, diagnostics: bool) -> Result<Self, String> {
         let sid = frames::current_user_sid()?;
         let name = name.to_owned();
         let (started_tx, started_rx) = mpsc::channel();
@@ -70,7 +77,7 @@ impl VirtualCamera {
         let thread = std::thread::Builder::new()
             .name("virtual camera".into())
             .spawn(move || {
-                let camera = match make(&name, &sid) {
+                let camera = match make(&name, &sid, diagnostics) {
                     Ok(camera) => {
                         let _ = started_tx.send(Ok(()));
                         camera
@@ -102,7 +109,7 @@ impl Drop for VirtualCamera {
     }
 }
 
-fn make(name: &str, sid: &str) -> Result<IMFVirtualCamera, String> {
+fn make(name: &str, sid: &str, diagnostics: bool) -> Result<IMFVirtualCamera, String> {
     let _ = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
     unsafe { MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET) }.map_err(|e| format!("MFStartup: {e}"))?;
     // Looked up, not linked: Koala still starts on Windows 10, which has
@@ -131,6 +138,8 @@ fn make(name: &str, sid: &str) -> Result<IMFVirtualCamera, String> {
     .map_err(|e| format!("MFCreateVirtualCamera: {e}"))?;
     let camera = camera.ok_or("MFCreateVirtualCamera gave no camera")?;
     unsafe { camera.SetString(&USER_SID, &HSTRING::from(sid)) }.map_err(|e| format!("the camera's user: {e}"))?;
+    unsafe { camera.SetUINT32(&DIAGNOSTICS_ALLOWED, diagnostics.into()) }
+        .map_err(|e| format!("the camera's diagnostics: {e}"))?;
     // E_ACCESSDENIED here: the camera service can't read the source's DLL,
     // or the user doesn't allow apps the camera (Settings > Privacy).
     unsafe { camera.Start(None) }.map_err(|e| format!("starting the camera: {e}"))?;

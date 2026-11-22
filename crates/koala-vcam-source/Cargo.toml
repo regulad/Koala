@@ -11,7 +11,9 @@ authors.workspace = true
 crate-type = ["cdylib"]
 
 [dependencies]
+koala-diagnostics.workspace = true
 koala-vcam.workspace = true
+sentry.workspace = true
 windows-core.workspace = true
 windows = { workspace = true, features = [
     "Win32_Foundation",
@@ -26,3 +28,7 @@ windows = { workspace = true, features = [
     "Win32_System_SystemServices",
     "Win32_System_Variant",
 ] }
+
+[dev-dependencies]
+# The diagnostics' test sends through the SDK to a test transport.
+sentry = { workspace = true, features = ["test"] }

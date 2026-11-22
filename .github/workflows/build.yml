@@ -1,6 +1,7 @@
 # Builds Koala's programs and signs them with Azure Artifact Signing, as
 # Warlock's build.yml does: koala.exe (the console tool for trials) and
-# koala-tray.exe (the app), signed.
+# koala-tray.exe (the app), signed; and the virtual camera's media source,
+# koala_vcam_source.dll, which isn't signed yet.
 #
 # Building and signing are separate jobs. Only the signing job can reach the
 # signing account (the `id-token` permission, an environment's secrets), and
@@ -24,6 +25,8 @@
 # its own, as in Warlock's: it alone has the Sentry token, it has no
 # `id-token`, so it can't reach the signing account, and it runs nothing
 # built here, only sentry-cli, pinned by its SHA-256, which reads the files.
+# The programs' go to the `koala` project, the media source's to
+# `koala-vcam`, where it reports.
 name: Build and sign
 
 on:
@@ -61,13 +64,15 @@ jobs:
         shell: pwsh
         run: ./tools/ffmpeg.ps1
       - name: Build
-        run: cargo build --release --locked -p koala
+        run: cargo build --release --locked -p koala -p koala-vcam-source
       # The privacy policy goes with the programs (crates/koala/src/diagnostics.rs).
       - name: Privacy policy
         shell: pwsh
         run: Copy-Item PRIVACY.md target/release/
       # The programs, and FFmpeg's DLLs beside them (koala's build script
-      # puts them there), which are BtbN's and aren't signed here.
+      # puts them there), which are BtbN's and aren't signed here; with
+      # them, the media source, which isn't either (`files-folder-filter`
+      # takes extensions, and would take FFmpeg's DLLs with it).
       - uses: actions/upload-artifact@v7
         with:
           name: unsigned-programs
@@ -78,8 +83,8 @@ jobs:
             target/release/PRIVACY.md
           if-no-files-found: error
           retention-days: 1
-      # Both programs report to Sentry. Signing changes neither's
-      # identifiers, so these match the signed programs.
+      # Both programs and the media source report to Sentry. Signing
+      # changes none's identifiers, so these match the signed programs.
       - uses: actions/upload-artifact@v7
         with:
           name: debug-files
@@ -88,6 +93,8 @@ jobs:
             target/release/koala.pdb
             target/release/koala-tray.exe
             target/release/koala_tray.pdb
+            target/release/koala_vcam_source.dll
+            target/release/koala_vcam_source.pdb
           if-no-files-found: error
           retention-days: 1
 
@@ -116,9 +123,14 @@ jobs:
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
         run: |
-          "$RUNNER_TEMP/sentry-cli" debug-files check debug-files/koala.pdb
-          "$RUNNER_TEMP/sentry-cli" debug-files check debug-files/koala_tray.pdb
-          "$RUNNER_TEMP/sentry-cli" debug-files upload -o regulad -p koala --wait debug-files
+          cd debug-files
+          for pdb in koala.pdb koala_tray.pdb koala_vcam_source.pdb; do
+            "$RUNNER_TEMP/sentry-cli" debug-files check "$pdb"
+          done
+          "$RUNNER_TEMP/sentry-cli" debug-files upload -o regulad -p koala --wait \
+            koala.exe koala.pdb koala-tray.exe koala_tray.pdb
+          "$RUNNER_TEMP/sentry-cli" debug-files upload -o regulad -p koala-vcam --wait \
+            koala_vcam_source.dll koala_vcam_source.pdb
 
   sign:
     name: Sign

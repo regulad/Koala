@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/koala", "crates/koala-capture", "crates/koala-pairing", "crates/koala-rapport", "crates/koala-vcam", "crates/koala-vcam-source"]
+members = ["crates/koala", "crates/koala-capture", "crates/koala-diagnostics", "crates/koala-pairing", "crates/koala-rapport", "crates/koala-vcam", "crates/koala-vcam-source"]
 # Warlock's crates belong to Warlock's own workspace, not this one.
 exclude = ["third_party/warlock"]
 
@@ -16,6 +16,7 @@ authors = ["Parker Wahle <regulad@regulad.xyz>"]
 # (PLAN.md, "Pinned decisions"); Cargo.lock pins transitive ones that weren't.
 [workspace.dependencies]
 koala-capture = { path = "crates/koala-capture", version = "0.0.0" }
+koala-diagnostics = { path = "crates/koala-diagnostics", version = "0.0.0" }
 koala-pairing = { path = "crates/koala-pairing", version = "0.0.0" }
 koala-rapport = { path = "crates/koala-rapport", version = "0.0.0" }
 koala-vcam = { path = "crates/koala-vcam", version = "0.0.0" }

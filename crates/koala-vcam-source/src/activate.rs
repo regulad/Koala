@@ -37,13 +37,25 @@ pub fn create() -> windows::core::Result<IMFActivate> {
 }
 
 impl IMFActivate_Impl for Activate_Impl {
-    /// The media source: made the first time, from the camera's attributes.
+    /// The media source: made the first time, from the camera's attributes,
+    /// which also say whether its user allows diagnostics.
     fn ActivateObject(&self, iid: *const GUID, out: *mut *mut c_void) -> windows::core::Result<()> {
         let source = {
             let mut slot = self.source.lock().unwrap_or_else(|p| p.into_inner());
             match &*slot {
                 Some(source) => source.clone(),
-                None => slot.insert(crate::source::create(&self.attributes)?).clone(),
+                None => {
+                    let allowed = unsafe { self.attributes.GetUINT32(&koala_vcam::DIAGNOSTICS_ALLOWED) };
+                    crate::diagnostics::camera(allowed.is_ok_and(|a| a == 1));
+                    match crate::source::create(&self.attributes) {
+                        Ok(source) => slot.insert(source).clone(),
+                        Err(e) => {
+                            crate::log(&format!("making a source: {e}"));
+                            crate::diagnostics::error("making a source", &e);
+                            return Err(e);
+                        }
+                    }
+                }
             }
         };
         unsafe { source.query(iid, out) }.ok()

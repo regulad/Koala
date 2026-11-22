@@ -8,17 +8,13 @@
 //! - beside the programs in `target/<profile>` and its `examples`, for
 //!   running them directly, and for packaging.
 //!
-//! It also tells the diagnostics (`src/diagnostics.rs`) what they name the
-//! release after: the commit (`KOALA_COMMIT`), and whether this is a tagged
-//! build (`KOALA_TAGGED`, from GitHub's runner); and whether to build them in
-//! for a trial (`KOALA_DIAGNOSTICS=1` when building).
+//! (What the diagnostics name the release after is `koala-diagnostics`'s
+//! build script's.)
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::{env, fs};
 
 fn main() {
-    release();
     println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
     let Some(ffmpeg) = env::var_os("FFMPEG_DIR") else { return };
     let bin = Path::new(&ffmpeg).join("bin");
@@ -42,34 +38,6 @@ fn main() {
     };
     copy(&dlls, profile);
     copy(&dlls, &profile.join("examples"));
-}
-
-/// The commit, whether GitHub's runner is building a tag, and whether a
-/// build that isn't one should send diagnostics anyway, for a trial.
-fn release() {
-    println!("cargo:rerun-if-env-changed=GITHUB_REF_TYPE");
-    if env::var("GITHUB_REF_TYPE").as_deref() == Ok("tag") {
-        println!("cargo:rustc-env=KOALA_TAGGED=1");
-    }
-    println!("cargo:rerun-if-env-changed=KOALA_DIAGNOSTICS");
-    if env::var("KOALA_DIAGNOSTICS").as_deref() == Ok("1") {
-        println!("cargo:rustc-env=KOALA_DIAGNOSTICS_TRIAL=1");
-    }
-    let Some(manifest) = env::var_os("CARGO_MANIFEST_DIR") else { return };
-    let root = Path::new(&manifest).join("..").join("..");
-    let commit = Command::new("git").args(["rev-parse", "--short=12", "HEAD"]).current_dir(&root).output();
-    if let Ok(out) = commit
-        && out.status.success()
-    {
-        println!("cargo:rustc-env=KOALA_COMMIT={}", String::from_utf8_lossy(&out.stdout).trim());
-    }
-    // A commit or a checkout changes these.
-    for file in ["HEAD", "logs/HEAD"] {
-        let path = root.join(".git").join(file);
-        if path.exists() {
-            println!("cargo:rerun-if-changed={}", path.display());
-        }
-    }
 }
 
 /// Copies `dlls` into `dir`, skipping those already there at the same size.

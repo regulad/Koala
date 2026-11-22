@@ -22,6 +22,7 @@
 
 mod activate;
 mod attributes;
+mod diagnostics;
 mod factory;
 mod source;
 mod stream;
@@ -37,7 +38,9 @@ use windows::Win32::Foundation::{
 };
 use windows::Win32::System::Com::IClassFactory;
 use windows::Win32::System::Diagnostics::Debug::OutputDebugStringW;
-use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows::Win32::System::LibraryLoader::{
+    GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, GET_MODULE_HANDLE_EX_FLAG_PIN, GetModuleFileNameW, GetModuleHandleExW,
+};
 use windows::Win32::System::Registry::{HKEY_LOCAL_MACHINE, REG_SZ, RegDeleteTreeW, RegSetKeyValueW};
 use windows::Win32::System::SystemServices::DLL_PROCESS_ATTACH;
 use windows::core::{BOOL, GUID, HRESULT, HSTRING, Interface, PCWSTR};
@@ -92,6 +95,19 @@ pub(crate) fn log(message: &str) {
             time.wMilliseconds,
             std::process::id()
         );
+    }
+}
+
+/// Keeps this DLL loaded until the process ends, whatever
+/// `DllCanUnloadNow` answers: for the diagnostics' threads, which run its
+/// code ([`diagnostics`]).
+pub(crate) fn pin() {
+    let mut module = HMODULE::default();
+    // Any address inside this DLL names it: this function's.
+    let inside = PCWSTR(pin as *const () as *const u16);
+    let flags = GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS;
+    if let Err(e) = unsafe { GetModuleHandleExW(flags, inside, &mut module) } {
+        log(&format!("pinning this DLL: {e}"));
     }
 }
 

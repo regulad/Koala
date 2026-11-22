@@ -30,8 +30,10 @@ says so nowhere.
 
 ## Keep the diagnostics anonymous, and `PRIVACY.md` true
 
-What Koala sends to Sentry (`crates/koala/src/diagnostics.rs`) never
-identifies the user, this computer or the iPhone: no names (the user's, the
+What Koala sends to Sentry (`crates/koala/src/diagnostics.rs`, and the
+virtual camera's source's, `crates/koala-vcam-source/src/diagnostics.rs`,
+both on `crates/koala-diagnostics`) never identifies the user, this
+computer or the iPhone: no names (the user's, the
 computer's, the iPhone's), user or device IDs, network addresses, keys or
 pairing identifiers (Parker, 2026-11-20). `PRIVACY.md` lists what is sent,
 and it changes in the same commit as anything that adds to it.
@@ -44,17 +46,22 @@ breaks the promise without anyone noticing.
 - Send facts Koala chose, not text it was handed: a breadcrumb or an error
   names the step or what failed, not the iPhone's name or a peer's address.
   Koala's console output (frame dumps, pairing IDs) never goes to Sentry.
-- Anything that does go out passes through `redact`; keep its test cases
-  growing with what you've seen leak elsewhere.
+- Anything that does go out passes through `redact`
+  (`koala-diagnostics`); keep its test cases growing with what you've seen
+  leak elsewhere. The virtual camera's source is given its user's SID,
+  which `redact` takes out.
 - Transactions are capture sessions with the iPhone only, named by their
   kind (`microphone`, `microphone+camera`); Koala's requests to Warlock
   aren't, since Warlock reports its own (Parker, 2026-11-21).
-- `DO_NOT_TRACK` turns everything off; nothing may bypass it.
+- `DO_NOT_TRACK` turns everything off; nothing may bypass it. The virtual
+  camera's source, in Windows' camera service, can't see it: Koala passes
+  the user's say in the camera's `DIAGNOSTICS_ALLOWED`, without which the
+  source sends nothing.
 - Only a release has the DSN built in. A trial that should report builds
   with `KOALA_DIAGNOSTICS=1`; nothing else turns it on.
-- `nothing_identifying_leaves` sends through the real SDK: run it, and
-  `KOALA_SHOW_DIAGNOSTICS=1 cargo test -p koala nothing_identifying --
-  --nocapture` shows what would leave.
+- `nothing_identifying_leaves`, in `koala` and in `koala-vcam-source`,
+  sends through the real SDK: run both, and `KOALA_SHOW_DIAGNOSTICS=1 cargo
+  test -p koala nothing_identifying -- --nocapture` shows what would leave.
 
 ## Check the open issues with every commit
 

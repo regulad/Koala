@@ -273,6 +273,7 @@ fn deliver(shared: Shared, sid: Option<String>, stop: Arc<AtomicBool>) {
                 Err(e) if !reported => {
                     reported = true;
                     crate::log(&format!("the shared memory: {e}"));
+                    crate::diagnostics::error("the shared memory", &e);
                 }
                 Err(_) => {}
             }
@@ -314,6 +315,10 @@ fn deliver(shared: Shared, sid: Option<String>, stop: Arc<AtomicBool>) {
                 failed += 1;
                 if failed <= 3 || failed.is_power_of_two() {
                     crate::log(&format!("a sample ({failed} failed): {e}"));
+                }
+                // The first of a delivery's: the rest are likely the same.
+                if failed == 1 {
+                    crate::diagnostics::error("delivering a sample", &e);
                 }
             }
         }

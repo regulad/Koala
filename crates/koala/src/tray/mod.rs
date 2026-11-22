@@ -86,7 +86,7 @@ pub fn run() -> Result<(), String> {
 /// (its source not installed, or a Windows before 11), sessions are the
 /// microphones alone.
 fn camera(name: &str) -> Option<koala_vcam::VirtualCamera> {
-    match koala_vcam::VirtualCamera::start(name) {
+    match koala_vcam::VirtualCamera::start(name, crate::diagnostics::allowed()) {
         Ok(camera) => {
             crate::diagnostics::step("tray: the virtual camera is up");
             println!("koala-tray: the camera \"{name}\" is up");
