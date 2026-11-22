@@ -14,6 +14,13 @@ adapter included: Warlock asks the iPhone onto AWDL over Bluetooth LE. With
 Warlock 0.2.5 or later, Koala's menu also says when that adapter is missing,
 off, or without the Bluetooth 5 features it needs.
 
+For the microphones, Koala needs [usbip-win2](https://github.com/vadimgrn/usbip-win2)
+0.9.8.0 or later, whose driver attaches them to Windows. Earlier versions
+can crash Windows when an app closes such a microphone
+([#181](https://github.com/vadimgrn/usbip-win2/issues/181)). (As of 21
+November 2026, the newest on winget is only 0.9.7.8: install GitHub's
+release.)
+
 ## Privacy
 
 Koala's releases send crash reports and diagnostics to Sentry, without
