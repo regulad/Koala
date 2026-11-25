@@ -22,6 +22,10 @@ TARGET = "x86_64-pc-windows-msvc"
 LICENCE_PREFIXES = ("license", "licence", "copying", "copyright", "notice", "unlicense")
 # Licence files of C code built into a crate, under its directory.
 VENDORED = {"opusic-sys": ["opus/COPYING"]}
+# Where Warlock's crates come from, as Cargo.toml takes them: offered under
+# GPL-2.0-only OR AGPL-3.0-or-later, with no licence files of their own, and
+# taken under the AGPL, Koala's own licence.
+OWN_SOURCES = ("git+https://github.com/regulad/Warlock",)
 # Libraries the programs load at run time, which no crate ships: name, the
 # file naming the build, licence, source, licence files (all under the
 # repository). FFmpeg is BtbN's LGPL build, which is LGPL version 3
@@ -108,7 +112,7 @@ def main():
             out.append(f"  Source: {p['repository']}")
         if refs:
             out.append(f"  Files: {', '.join(refs)}")
-        elif p["source"] is None:
+        elif p["source"] is None or p["source"].startswith(OWN_SOURCES):
             out.append("  Used under the AGPL-3.0-or-later, Koala's own licence.")
         out.append("")
     out += ["", "Licence texts", ""]
