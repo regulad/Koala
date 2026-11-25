@@ -46,7 +46,7 @@ hkdf = "0.13.0"
 hmac = "0.13.0"
 opus = "0.4.0"
 # opus's libopus build. Pinned: PLAN.md, avc-media.
-opusic-sys = "=0.7.6"
+opusic-sys = "=0.7.7"
 miniz_oxide = "0.9.1"
 plist = "1.10.3"
 qrcode = { version = "0.14.1", default-features = false }
