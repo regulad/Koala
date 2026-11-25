@@ -2,9 +2,6 @@
 # master: the pre-commit hooks a commit runs (.pre-commit-config.yaml), over
 # the whole tree, then the tests. Among the hooks, cargo-deny holds every
 # dependency to the licence zone (deny.toml). As Warlock's check.yml does.
-#
-# Koala builds against Warlock's client crate from the Warlock submodule
-# (Cargo.toml), so it's checked out too; Warlock's own submodules aren't.
 name: Check
 
 on:
@@ -39,7 +36,6 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
           persist-credentials: false
       - name: Rust
         run: |

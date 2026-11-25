@@ -1,8 +1,9 @@
 name: Dependabot auto-merge
 
 # Turns on GitHub's auto-merge for Dependabot's pull requests that aren't
-# major updates, GitHub Actions updates or pre-commit hook updates: today
-# that leaves the security updates. GitHub then merges each one once Check's
+# major updates, Sentry's SDK, GitHub Actions updates or pre-commit hook
+# updates: the cargo group, and security updates. GitHub then merges each
+# one once Check's
 # required check passes (.github/settings.yml). Nothing deploys from master:
 # a release is a tag, by hand (build.yml). As Warlock's
 # dependabot-auto-merge.yml does.
@@ -11,6 +12,8 @@ name: Dependabot auto-merge
 # security updates do too. They come outside the groups, and skip the
 # cooldown: Check, cargo-deny's licence zone among its hooks, is what they
 # pass before merging. These wait for a person:
+# - the sentry group: an update to Sentry's SDK is checked for what it adds
+#   to the diagnostics before it ships (AGENTS.md);
 # - every GitHub Actions update, grouped or not, since none of the actions
 #   promises SemVer;
 # - every pre-commit hook update, since none of the hook projects promises
@@ -66,6 +69,7 @@ jobs:
           steps.metadata.outputs.update-type != 'version-update:semver-major'
           && steps.metadata.outputs.package-ecosystem != 'github_actions'
           && steps.metadata.outputs.package-ecosystem != 'pre_commit'
+          && steps.metadata.outputs.dependency-group != 'sentry'
         run: gh pr merge --auto --squash "$PR_URL"
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}

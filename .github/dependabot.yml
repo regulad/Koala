@@ -1,18 +1,16 @@
 # Dependabot keeps Koala's dependencies current, weekly, as Warlock's does:
+#   * the Rust workspace (Cargo.toml, Cargo.lock), Warlock's crates among
+#     them: they're pinned to a release's commit, which Dependabot moves to
+#     the newest release tag's;
 #   * the GitHub Actions in .github/workflows/;
 #   * the pre-commit hooks' revisions (.pre-commit-config.yaml).
-#
-# Not the Rust workspace: warlock-client comes from a path in the Warlock
-# submodule (Cargo.toml), and Dependabot's Cargo updates can't resolve a
-# path into a submodule (dependabot/dependabot-core#11861). Its security
-# alerts read Cargo.lock and still cover the Rust dependencies
-# (settings.yml). Nor the submodule itself: Dependabot would move it to
-# Warlock's latest commit, and Koala takes Warlock's releases, by hand.
 #
 # Each ecosystem gets one PR a week, on Monday morning, grouping its
 # updates. workflows/dependabot-auto-merge.yml has GitHub merge every update
 # but a major one once Check passes, security updates included. These wait
 # for a person:
+# - the sentry group: an update to Sentry's SDK is checked for what it adds
+#   to the diagnostics before it ships (AGENTS.md);
 # - the github-actions group, since none of the actions promises SemVer;
 # - the pre-commit group, since none of the hook projects promises SemVer;
 # - major updates.
@@ -28,6 +26,29 @@
 # doesn't list.
 version: 2
 updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: America/New_York
+    cooldown:
+      default-days: 14
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    groups:
+      # Sentry's SDK, apart from the rest so that the rest can merge without
+      # it. The cargo group excludes it by the same patterns.
+      sentry:
+        patterns: ["sentry", "sentry-*"]
+        update-types: [minor, patch]
+      # Minor and patch updates together; each major on its own.
+      cargo:
+        patterns: ["*"]
+        exclude-patterns: ["sentry", "sentry-*"]
+        update-types: [minor, patch]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

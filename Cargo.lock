@@ -2696,7 +2696,8 @@ dependencies = [
 
 [[package]]
 name = "warlock-client"
-version = "0.2.5"
+version = "0.2.6"
+source = "git+https://github.com/regulad/Warlock?rev=221ffe8a7210edf0f0658936fded1b018e96d561#221ffe8a7210edf0f0658936fded1b018e96d561"
 dependencies = [
  "bytes",
  "http 1.5.0",
@@ -2710,7 +2711,8 @@ dependencies = [
 
 [[package]]
 name = "warlock-msi-kit"
-version = "0.2.5"
+version = "0.2.6"
+source = "git+https://github.com/regulad/Warlock?rev=221ffe8a7210edf0f0658936fded1b018e96d561#221ffe8a7210edf0f0658936fded1b018e96d561"
 dependencies = [
  "sha2",
  "windows-sys 0.61.2",

@@ -1,8 +1,6 @@
 [workspace]
 resolver = "3"
 members = ["crates/koala", "crates/koala-capture", "crates/koala-diagnostics", "crates/koala-msi", "crates/koala-pairing", "crates/koala-rapport", "crates/koala-vcam", "crates/koala-vcam-source"]
-# Warlock's crates belong to Warlock's own workspace, not this one.
-exclude = ["third_party/warlock"]
 
 [workspace.package]
 # Koala's one version, which every crate carries: the release's date,
@@ -25,13 +23,14 @@ koala-diagnostics = { path = "crates/koala-diagnostics", version = "2026.11.22" 
 koala-pairing = { path = "crates/koala-pairing", version = "2026.11.22" }
 koala-rapport = { path = "crates/koala-rapport", version = "2026.11.22" }
 koala-vcam = { path = "crates/koala-vcam", version = "2026.11.22" }
-# Warlock's API client (GPL-2.0-only OR AGPL-3.0-or-later; Koala takes it
-# under the AGPL), from the Warlock submodule, which is pinned to a release
-# (`git submodule update --init`; Warlock's own submodules aren't needed).
-warlock-client = { path = "third_party/warlock/crates/warlock-client", version = "0.2.0" }
-# Warlock's MSI builder's machinery (GPL-2.0-only OR AGPL-3.0-or-later; Koala
-# takes it under the AGPL), which koala-msi builds Koala's package with.
-warlock-msi-kit = { path = "third_party/warlock/crates/warlock-msi-kit", version = "0.2.5" }
+# Warlock's API client, and its MSI builder's machinery, which koala-msi
+# builds Koala's package with (both GPL-2.0-only OR AGPL-3.0-or-later; Koala
+# takes them under the AGPL), from Warlock's repository at a release's
+# commit. Dependabot moves the pin from release tag to release tag. Cargo
+# checks out Warlock's own submodules with it, which it can't be told to
+# skip (rust-lang/cargo#4247); the build caches that checkout.
+warlock-client = { git = "https://github.com/regulad/Warlock", rev = "221ffe8a7210edf0f0658936fded1b018e96d561", version = "0.2.6" } # v0.2.6
+warlock-msi-kit = { git = "https://github.com/regulad/Warlock", rev = "221ffe8a7210edf0f0658936fded1b018e96d561", version = "0.2.6" } # v0.2.6
 
 aes = "0.9.4"
 apple-opack = "1.1.0"

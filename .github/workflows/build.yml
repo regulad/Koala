@@ -31,10 +31,6 @@
 # release in Sentry, in both projects, with its commits, and records its
 # deploy to `production`.
 #
-# Koala builds against Warlock's crates (warlock-client; warlock-msi-kit for
-# the package) from the Warlock submodule (Cargo.toml), so it's checked out
-# too; Warlock's own submodules aren't.
-#
 # The jobs that compile take check.yml's cache, which only a push to master
 # saves (Swatinem/rust-cache), and save nothing: a tag's run could only
 # save for that tag, which no other run reads.
@@ -65,7 +61,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
           persist-credentials: false
       - name: Rust
         run: |
@@ -206,12 +201,10 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      # The licence texts, the privacy policy and the notices, and
-      # warlock-msi-kit from the submodule; the package builder itself is
-      # built here.
+      # The licence texts, the privacy policy and the notices; the package
+      # builder itself is built here.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
           persist-credentials: false
       - name: Rust
         run: |
@@ -300,10 +293,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      # koala-msi builds against warlock-msi-kit, from the submodule.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          submodules: true
           persist-credentials: false
       - name: Rust
         run: |
