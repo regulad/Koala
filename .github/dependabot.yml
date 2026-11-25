@@ -9,9 +9,18 @@
 # (settings.yml). Nor the submodule itself: Dependabot would move it to
 # Warlock's latest commit, and Koala takes Warlock's releases, by hand.
 #
+# Each ecosystem gets one PR a week, on Monday morning, grouping its
+# updates. workflows/dependabot-auto-merge.yml has GitHub merge every update
+# but a major one once Check passes, security updates included. These wait
+# for a person:
+# - the github-actions group, since none of the actions promises SemVer;
+# - the pre-commit group, since none of the hook projects promises SemVer;
+# - major updates.
+#
 # An update waits until its release is two weeks old (`cooldown`), as
 # PLAN.md asks of every new dependency. Security updates don't wait: the
-# cooldown doesn't apply to them, so review those with care.
+# cooldown doesn't apply to them, and they merge once Check passes, like
+# the rest.
 #
 # Dependabot's pull requests run .github/workflows/check.yml: the
 # pre-commit hooks, whose cargo-deny holds them to the licence zone, and
@@ -23,6 +32,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: America/New_York
     cooldown:
       default-days: 14
     open-pull-requests-limit: 5
@@ -35,6 +47,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: America/New_York
     cooldown:
       default-days: 14
     open-pull-requests-limit: 5

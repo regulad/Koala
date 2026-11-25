@@ -2,7 +2,7 @@
 # commit once installed (`pre-commit install`, or globally through an init
 # template); `pre-commit run --all-files` runs them on the whole tree.
 #
-# Needs on PATH: cargo with its fmt and clippy subcommands, and cargo-deny.
+# Needs on PATH: cargo with its fmt and clippy subcommands.
 #
 # The licence text stays exactly as published.
 exclude: '^LICENSE\.md$'
@@ -19,6 +19,19 @@ repos:
       - id: check-toml
       - id: check-merge-conflict
       - id: check-added-large-files
+  # Dependencies: licences against PLAN.md's licence zone, RustSec
+  # advisories, banned crates and sources (deny.toml). Fetches the advisory
+  # database, so it needs the network. cargo-deny's own hook: pre-commit builds
+  # cargo-deny at this revision in an environment of its own, so it needs no
+  # install, and Dependabot's pre-commit updates move it.
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: bca0dde53651ee946720e4540b5ce2610bec8f06  # frozen: 0.20.2
+    hooks:
+      - id: cargo-deny
+        name: cargo deny
+        args: [check]
+        types: [file]
+        files: '(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
   - repo: local
     hooks:
       # Formats in place (rustfmt.toml); a commit that needed it fails once,
@@ -34,15 +47,6 @@ repos:
         entry: cargo clippy --workspace --all-targets -- -D warnings
         language: system
         files: '\.rs$|(^|/)Cargo\.(toml|lock)$'
-        pass_filenames: false
-      # Dependencies: licences against Koala's licence zone, RustSec
-      # advisories, banned crates and sources (deny.toml). Fetches the
-      # advisory database, so it needs the network.
-      - id: cargo-deny
-        name: cargo deny
-        entry: cargo deny check
-        language: system
-        files: '(^|/)Cargo\.(toml|lock)$|^deny\.toml$'
         pass_filenames: false
 
   # A TODO or FIXME names its GitHub issue, as TODO(#123). Markdown and this
